@@ -59,6 +59,70 @@ App.callGemini = async function(prompt) {
 
 // --- Business Logic Functions ---
 
+App.composeArrangement = async function() {
+    if(App.notesData.length === 0) return;
+    
+    const userPrompt = App.dom.composerPrompt.value.trim();
+    if (!userPrompt) {
+        alert("Por favor, escribe una descripción para el arreglo (ej: 'Estilo Jazz').");
+        return;
+    }
+
+    App.dom.aiStatus.classList.remove('hidden');
+    App.dom.aiStatusText.textContent = "Gemini orquestando...";
+    App.dom.btnCompose.disabled = true;
+
+    // Simplify melody for token efficiency
+    const seedMelody = App.notesData.map(n => ({m: n.midi, b: n.beats}));
+
+    const prompt = `Actúa como un compositor y arreglista experto.
+    
+    Tengo esta melodía semilla (Main Melody): ${JSON.stringify(seedMelody)}
+    
+    TAREA: Crea un arreglo musical completo basado en esta descripción: "${userPrompt}".
+    
+    REGLAS:
+    1. Devuelve un objeto JSON con una lista de "tracks".
+    2. Cada track debe tener "instrument" (nombre string) y "notes" (array).
+    3. El formato de nota es {"midi": 60, "beats": 1, "startTime": 0}. ¡IMPORTANTE: Usa "startTime" (en beats) para polifonía!
+    4. Incluye la melodía original en uno de los tracks (puedes variarla).
+    5. Añade acompañamiento (bajo, acordes, batería, contrapunto) según el estilo pedido.
+    6. Duración total: aprox 8-16 compases.
+    
+    Formato JSON esperado:
+    {
+      "tracks": [
+        { "instrument": "piano", "notes": [{"midi":60, "beats":1, "startTime":0}, ...] },
+        { "instrument": "bass", "notes": [...] },
+        { "instrument": "drums", "notes": [...] } // Para drums usa midi general (36=kick, 38=snare, 42=hh)
+      ]
+    }`;
+
+    try {
+        const result = await App.callGemini(prompt);
+        
+        if(result && result.tracks) {
+            App.arrangementData = result;
+            alert(`¡Arreglo compuesto!\n\nPistas generadas: ${result.tracks.map(t => t.instrument).join(', ')}.\n\nDale a PLAY para escuchar.`);
+            
+            // Highlight play button
+            App.dom.playBtn.classList.add('animate-pulse');
+            setTimeout(() => App.dom.playBtn.classList.remove('animate-pulse'), 2000);
+        } else {
+            throw new Error("Formato JSON incorrecto");
+        }
+    } catch(e) {
+        App.dom.aiStatusText.textContent = "Error al arreglar";
+        console.error(e);
+        setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
+    } finally {
+        if (!App.dom.aiStatusText.textContent.includes("Error")) {
+            App.dom.aiStatus.classList.add('hidden');
+        }
+        App.dom.btnCompose.disabled = false;
+    }
+};
+
 App.triggerIAAnalysis = async function() {
     if(App.notesData.length < 3) return;
     

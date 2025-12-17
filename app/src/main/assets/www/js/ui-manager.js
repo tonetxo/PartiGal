@@ -9,7 +9,8 @@ App.initUI = function() {
         'theme-toggle', 'record-btn', 'record-text', 'record-icon',
         'mic-level-bar', 'upload-state-content', 'recording-state-content',
         'btn-variation', 'btn-critique', 'critique-card', 'ai-critique-content',
-        'api-key-input', 'model-select', 'custom-model-input'
+        'api-key-input', 'model-select', 'custom-model-input',
+        'composer-prompt', 'btn-compose'
     ];
     
     // Map IDs to App.dom
@@ -74,6 +75,7 @@ App.setupHandlers = function() {
     
     App.dom.themeToggle.onclick = App.toggleTheme;
 
+    App.dom.btnCompose.onclick = App.composeArrangement;
     App.dom.btnExtend.onclick = App.extendMelody;
     App.dom.btnLyrics.onclick = App.generateLyrics;
     App.dom.btnVariation.onclick = App.generateVariation;

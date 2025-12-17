@@ -7,7 +7,8 @@ window.App = {
     isRecording: false,
     
     // Data
-    notesData: [],
+    notesData: [],       // The main melody (whistled or loaded)
+    arrangementData: null, // The complex multi-track arrangement from AI
     
     // Settings
     bpm: 120,

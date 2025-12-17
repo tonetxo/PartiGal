@@ -173,40 +173,193 @@ App.playAudio = function() {
     Tone.start(); 
     const now = Tone.now();
     const spb = 60 / App.bpm; 
-    let t = 0;
     
-    App.notesData.forEach(ev => {
-        if (ev.midi) {
-            App.currentSynth.triggerAttackRelease(
-                Tone.Frequency(ev.midi, "midi").toFrequency(), 
-                ev.beats * spb * 0.9, 
-                now + t
-            );
-        }
-        t += ev.beats * spb;
-    });
+    // Check if we have a complex arrangement
+    if (App.arrangementData && App.arrangementData.tracks) {
+        
+        App.arrangementData.tracks.forEach(track => {
+            // Choose synth based on instrument name (naive mapping)
+            let synth;
+            const name = track.instrument.toLowerCase();
+            
+            if (name.includes('drum') || name.includes('perc')) {
+                synth = new Tone.MembraneSynth().toDestination(); // Simple drums
+            } else if (name.includes('bass')) {
+                synth = new Tone.MonoSynth({ oscillator: { type: 'square' } }).toDestination();
+            } else {
+                // Default PolySynth
+                synth = new Tone.PolySynth(Tone.Synth).toDestination();
+            }
+            
+            // Schedule notes
+            track.notes.forEach(note => {
+                if (note.midi) {
+                    // Use startTime if available (polyphonic), else accumulate (monophonic fallback)
+                    const time = (note.startTime !== undefined) ? (note.startTime * spb) : 0; // Fallback 0 if logic fails
+                    
+                    synth.triggerAttackRelease(
+                        Tone.Frequency(note.midi, "midi").toFrequency(), 
+                        note.beats * spb * 0.9, 
+                        now + time
+                    );
+                }
+            });
+        });
+        
+    } else {
+        // Fallback: Play simple melody (Mono track)
+        let t = 0;
+        App.notesData.forEach(ev => {
+            if (ev.midi) {
+                App.currentSynth.triggerAttackRelease(
+                    Tone.Frequency(ev.midi, "midi").toFrequency(), 
+                    ev.beats * spb * 0.9, 
+                    now + t
+                );
+            }
+            t += ev.beats * spb;
+        });
+    }
+};
+
+App.beatsToMidiDuration = function(b) {
+    if (b >= 4) return '1';
+    if (b >= 2) return '2';
+    if (b >= 1) return '4';
+    if (b >= 0.5) return '8';
+    return '16';
 };
 
 App.saveMidi = function() {
-    const track = new MidiWriter.Track();
-    track.addEvent(new MidiWriter.ProgramChangeEvent({instrument: 1}));
+    const write = new MidiWriter.Writer([]);
     
-    App.notesData.forEach(ev => {
-        if (!ev.midi) {
-            track.addEvent(new MidiWriter.WaitEvent({ duration: App.beatsToVex(ev.beats) }));
-        } else {
-            const pitchInfo = App.midiToName(ev.midi);
-            const pitch = (pitchInfo.n + (pitchInfo.a || '')).toUpperCase() + pitchInfo.o;
-            track.addEvent(new MidiWriter.NoteEvent({ 
-                pitch: [pitch], 
-                duration: App.beatsToVex(ev.beats) 
-            }));
+    // Helper to process a list of notes into a track
+    const processNotesToTrack = (notes, trackName) => {
+        const track = new MidiWriter.Track();
+        if(trackName) track.addTrackName(trackName);
+        track.addEvent(new MidiWriter.ProgramChangeEvent({instrument: 1}));
+
+        // Group notes by startTime to handle chords/polyphony simply
+        const timeMap = new Map();
+        
+        notes.forEach(n => {
+            // Default to monophonic flow if startTime missing
+            const start = (n.startTime !== undefined) ? n.startTime : -1; 
+            
+            if (start === -1) {
+                // Sequential mode (original melody)
+                if (!n.midi) {
+                    track.addEvent(new MidiWriter.WaitEvent({ duration: App.beatsToMidiDuration(n.beats) }));
+                } else {
+                    const pitchInfo = App.midiToName(n.midi);
+                    const pitch = (pitchInfo.n + (pitchInfo.a || '')).toUpperCase() + pitchInfo.o;
+                    track.addEvent(new MidiWriter.NoteEvent({ 
+                        pitch: [pitch], 
+                        duration: App.beatsToMidiDuration(n.beats) 
+                    }));
+                }
+            } else {
+                // Time-based mode (AI Arrangement)
+                if (!timeMap.has(start)) timeMap.set(start, []);
+                timeMap.get(start).push(n);
+            }
+        });
+
+        if (timeMap.size > 0) {
+            // Sort by time
+            const sortedTimes = Array.from(timeMap.keys()).sort((a,b) => a - b);
+            let lastTime = 0;
+
+            sortedTimes.forEach(t => {
+                const notesAtTime = timeMap.get(t);
+                const waitBeats = t - lastTime;
+                
+                if (waitBeats > 0) {
+                    track.addEvent(new MidiWriter.WaitEvent({ duration: App.beatsToMidiDuration(waitBeats) }));
+                }
+                
+                // Add chord (all notes at this start time)
+                // Use the duration of the first note (simplification for chords)
+                const pitches = [];
+                let maxDuration = '4'; // Default
+                
+                notesAtTime.forEach(n => {
+                    if (n.midi) {
+                        const pitchInfo = App.midiToName(n.midi);
+                        pitches.push((pitchInfo.n + (pitchInfo.a || '')).toUpperCase() + pitchInfo.o);
+                        maxDuration = App.beatsToMidiDuration(n.beats);
+                    }
+                });
+
+                if (pitches.length > 0) {
+                    track.addEvent(new MidiWriter.NoteEvent({ 
+                        pitch: pitches, 
+                        duration: maxDuration
+                    }));
+                }
+                
+                // Ideally we advance cursor by note duration? 
+                // MidiWriter NoteEvent advances cursor by duration.
+                // So next wait calculation needs to account for this.
+                // Actually, if we use WaitEvent logic relative to previous start, 
+                // we need to be careful because NoteEvent adds to the time pointer.
+                
+                // Correct Logic for MidiWriter:
+                // It's a stream. Wait(X) adds X. Note(D) adds D.
+                // So TotalTime = Sum(Waits) + Sum(NoteDurations).
+                // But we want TotalTime to match 't'.
+                // This is hard with MidiWriter's sequential nature for polyphony where notes overlap time slots.
+                
+                // FIX: Use 'wait: 0' hack? Or just assume Monophony/Chords don't overlap strangely.
+                // For this prototype, we will trust that NoteEvent consumes time.
+                // So 'lastTime' should become t + durationInBeats.
+                
+                // Let's rely on standard sequential export.
+                // If the next note starts at T+2, and current note is duration 1.
+                // We are at T. Write Note(dur=1). We are at T+1.
+                // Next target is T+2. Wait(1).
+                
+                const durationBeats = App.vexToBeats(maxDuration); // Need reverse helper? Or just store beats.
+                // Simplified:
+                lastTime = t + notesAtTime[0].beats; 
+            });
         }
-    });
+        
+        return track;
+    };
+
+    if (App.arrangementData && App.arrangementData.tracks) {
+        App.arrangementData.tracks.forEach(t => {
+            write.tracks.push(processNotesToTrack(t.notes, t.instrument));
+        });
+    } else {
+        write.tracks.push(processNotesToTrack(App.notesData, "Melody"));
+    }
     
-    const write = new MidiWriter.Writer(track);
-    const link = document.createElement('a'); 
-    link.href = write.dataUri(); 
-    link.download = `AudioScore-${App.currentTitle.replace(/\s+/g, '-')}.mid`; 
-    link.click();
+    const base64 = write.dataUri();
+    const fileName = `AudioScore-${App.currentTitle.replace(/\s+/g, '-')}.mid`;
+
+    console.log("Attempting to save MIDI:", fileName); // DEBUG LOG
+
+    if (window.AndroidInterface && window.AndroidInterface.saveFile) {
+        console.log("Native Bridge Found. Calling saveFile..."); // DEBUG LOG
+        // Native Save
+        window.AndroidInterface.saveFile(base64, fileName);
+    } else {
+        console.log("Native Bridge NOT found. Using fallback."); // DEBUG LOG
+        // Fallback for desktop browser debugging
+        const link = document.createElement('a'); 
+        link.href = base64; 
+        link.download = fileName; 
+        link.click();
+    }
+};
+
+// Helper required for export logic
+App.vexToBeats = function(code) {
+    if(code === '1') return 4;
+    if(code === '2') return 2;
+    if(code === '4') return 1;
+    if(code === '8') return 0.5;
+    return 0.25;
 };
