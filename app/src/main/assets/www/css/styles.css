@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+
+body { 
+    font-family: 'Inter', sans-serif; 
+}
+
+.score-paper { 
+    /* Light mode default */
+    background: white; 
+    border: 1px solid #e2e8f0;
+    color: #1e293b;
+    
+    border-radius: 12px; 
+    padding: 20px; 
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%; 
+    overflow: hidden; 
+    transition: all 0.3s ease;
+}
+
+/* Dark Mode overrides via class */
+.dark .score-paper {
+    background: #1e293b; /* Slate 800 */
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+.score-paper svg {
+    width: 100%; 
+    height: auto;
+}
+
+input[type="range"] { 
+    accent-color: #2563eb; 
+    cursor: pointer;
+}
+
+.drag-active { 
+    border-color: #3b82f6 !important; 
+    background-color: #eff6ff !important; 
+    transform: scale(1.01);
+}
+.dark .drag-active {
+     background-color: #1e3a8a !important; /* Darker blue background */
+     border-color: #60a5fa !important;
+}
+
+.transition-custom {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Animación para botones IA */
+@keyframes sparkle {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+.btn-ai {
+    background: linear-gradient(45deg, #4f46e5, #7c3aed, #2563eb);
+    background-size: 200% 200%;
+    animation: sparkle 3s ease infinite;
+}
+
+/* Recording State Styles */
+.recording-box {
+    border-color: #ef4444 !important; /* Red border */
+    border-style: solid !important;
+    background-color: rgba(239, 68, 68, 0.05);
+}
+.dark .recording-box {
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.recording-btn-active {
+    background-color: #fee2e2 !important;
+    color: #ef4444 !important;
+    border-color: #ef4444 !important;
+}
+.dark .recording-btn-active {
+    background-color: #7f1d1d !important;
+    color: #fca5a5 !important;
+}

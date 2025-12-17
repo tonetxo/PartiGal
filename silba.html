@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PartiGal - IA Composer Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            bg: '#0f172a',
+                            paper: '#1e293b',
+                            text: '#f1f5f9',
+                            border: '#334155'
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- VexFlow Core -->
+    <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
+    <!-- Audio Processing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- CORRECCIÓN: Enlace corregido a midi-writer-js (unpkg) -->
+    <script src="https://unpkg.com/midi-writer-js@2.1.4/browser/midi-writer-js.js"></script>
+    <!-- Marked for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+        }
+
+        .score-paper { 
+            /* Light mode default */
+            background: white; 
+            border: 1px solid #e2e8f0;
+            color: #1e293b;
+            
+            border-radius: 12px; 
+            padding: 20px; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%; 
+            overflow: hidden; 
+            transition: all 0.3s ease;
+        }
+
+        /* Dark Mode overrides via class */
+        .dark .score-paper {
+            background: #1e293b; /* Slate 800 */
+            border-color: #334155;
+            color: #f1f5f9;
+        }
+        
+        .score-paper svg {
+            width: 100%; 
+            height: auto;
+        }
+
+        input[type="range"] { 
+            accent-color: #2563eb; 
+            cursor: pointer;
+        }
+        
+        .drag-active { 
+            border-color: #3b82f6 !important; 
+            background-color: #eff6ff !important; 
+            transform: scale(1.01);
+        }
+        .dark .drag-active {
+             background-color: #1e3a8a !important; /* Darker blue background */
+             border-color: #60a5fa !important;
+        }
+
+        .transition-custom {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Animación para botones IA */
+        @keyframes sparkle {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .btn-ai {
+            background: linear-gradient(45deg, #4f46e5, #7c3aed, #2563eb);
+            background-size: 200% 200%;
+            animation: sparkle 3s ease infinite;
+        }
+
+        /* Recording State Styles */
+        .recording-box {
+            border-color: #ef4444 !important; /* Red border */
+            border-style: solid !important;
+            background-color: rgba(239, 68, 68, 0.05);
+        }
+        .dark .recording-box {
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+
+        .recording-btn-active {
+            background-color: #fee2e2 !important;
+            color: #ef4444 !important;
+            border-color: #ef4444 !important;
+        }
+        .dark .recording-btn-active {
+            background-color: #7f1d1d !important;
+            color: #fca5a5 !important;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100 transition-colors duration-300">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="text-center md:text-left flex-1">
+                <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight">
+                    Audio<span class="text-blue-600 dark:text-blue-400">Score</span> Pro
+                </h1>
+                <p class="text-slate-500 dark:text-slate-400 text-sm md:text-lg mt-2">Transcriptor y Compositor IA</p>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <!-- Status IA -->
+                <div id="ai-status" class="hidden flex items-center gap-3 px-5 py-2.5 bg-slate-800 dark:bg-slate-700 text-white rounded-full text-sm font-bold shadow-lg animate-pulse">
+                    <svg class="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span id="ai-status-text">Gemini pensando...</span>
+                </div>
+
+                <!-- Dark Mode Toggle -->
+                <button id="theme-toggle" class="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all text-slate-600 dark:text-yellow-400" aria-label="Toggle Dark Mode">
+                    <!-- Sun Icon -->
+                    <svg id="sun-icon" class="w-6 h-6 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    <!-- Moon Icon -->
+                    <svg id="moon-icon" class="w-6 h-6 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Sidebar Controls -->
+            <aside class="lg:col-span-3 space-y-4">
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6 transition-colors">
+                    
+                    <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b dark:border-slate-700 pb-2">Entrada de Audio</h3>
+
+                    <!-- Combined Upload / Recording Area -->
+                    <div class="relative h-40"> <!-- Fixed height for layout stability -->
+                        <input type="file" id="audio-input" accept="audio/*" class="hidden">
+                        
+                        <!-- Main Container used for both styles -->
+                        <label id="drop-zone" for="audio-input" class="absolute inset-0 transition-custom group flex flex-col justify-center items-center p-4 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl cursor-pointer hover:border-blue-500 dark:hover:border-blue-500 hover:bg-slate-50 dark:hover:bg-slate-700">
+                            
+                            <!-- STATE 1: UPLOAD (Default) -->
+                            <div id="upload-state-content" class="text-center w-full">
+                                <svg class="w-8 h-8 text-slate-400 dark:text-slate-500 mx-auto mb-2 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                                <span id="file-label" class="text-xs font-bold text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate block px-2">Subir Audio</span>
+                                <span class="text-[10px] text-slate-400 mt-1 block">MP3, WAV, OGG</span>
+                            </div>
+
+                            <!-- STATE 2: RECORDING (Hidden by default) -->
+                            <div id="recording-state-content" class="hidden w-full flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <span class="relative flex h-3 w-3">
+                                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                      <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                                    </span>
+                                    <span class="text-xs font-black text-red-500 tracking-widest uppercase">Grabando</span>
+                                </div>
+                                
+                                <!-- Integrated VU Meter Bar -->
+                                <div class="w-full max-w-[80%] h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
+                                    <div id="mic-level-bar" class="h-full bg-emerald-500 transition-all duration-75 ease-out w-0 rounded-full"></div>
+                                </div>
+                                <span class="text-[10px] text-slate-400 mt-2 font-mono" id="recording-timer">Nivel de señal</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Record Button Control -->
+                    <button id="record-btn" class="w-full py-3 bg-white dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 hover:border-red-500 hover:text-red-500 dark:hover:border-red-500 dark:hover:text-red-400 rounded-xl font-bold transition-all flex justify-center items-center gap-2">
+                        <span id="record-icon" class="text-lg">🎤</span>
+                        <span id="record-text">Grabar Silbido</span>
+                    </button>
+
+                    <!-- AI Creative Tools -->
+                    <div class="pt-2 border-t border-slate-100 dark:border-slate-700">
+                        <h3 class="text-xs font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-3">Estudio Creativo Gemini</h3>
+                        <div class="space-y-2">
+                            <button id="btn-extend" disabled class="w-full py-3 btn-ai text-white rounded-xl font-bold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 hover:scale-105 transform">
+                                <span>✨ Extender Melodía</span>
+                            </button>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button id="btn-variation" disabled class="py-3 bg-white dark:bg-slate-700 border-2 border-indigo-100 dark:border-indigo-900 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-1 text-[10px] md:text-xs">
+                                    <span>✨ Variar Estilo</span>
+                                </button>
+                                <button id="btn-critique" disabled class="py-3 bg-white dark:bg-slate-700 border-2 border-indigo-100 dark:border-indigo-900 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-1 text-[10px] md:text-xs">
+                                    <span>👨‍🏫 Crítica Pro</span>
+                                </button>
+                            </div>
+                            <button id="btn-lyrics" disabled class="w-full py-3 bg-white dark:bg-slate-700 border-2 border-indigo-100 dark:border-indigo-900 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
+                                <span>📝 Generar Letra</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Basic Settings -->
+                    <div class="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-700">
+                         <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Ajustes</h3>
+                        
+                        <!-- Tempo Control -->
+                        <div>
+                            <div class="flex justify-between mb-1 items-center">
+                                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">Tempo</label>
+                                <span id="bpm-val" class="text-xs font-mono bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">120 BPM</span>
+                            </div>
+                            <input type="range" id="bpm-input" min="60" max="180" value="120" class="w-full h-1.5 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer">
+                        </div>
+
+                        <!-- Sensitivity Control -->
+                        <div>
+                            <div class="flex justify-between mb-1 items-center">
+                                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">Sensibilidad</label>
+                                <span class="text-[10px] text-slate-400 font-bold uppercase">Suavizado</span>
+                            </div>
+                            <input type="range" id="merge-input" min="1" max="12" value="6" class="w-full h-1.5 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer">
+                            <p class="text-[10px] text-slate-400 mt-1">Más alto = menos notas cortas</p>
+                        </div>
+                    </div>
+
+                    <button id="retranscribe-btn" disabled class="w-full py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50">
+                        🔄 Resetear / Reprocesar
+                    </button>
+                </div>
+
+                <!-- Playback -->
+                <div class="flex gap-2">
+                    <button id="play-btn" disabled class="flex-1 py-3 bg-slate-900 dark:bg-slate-700 hover:bg-black dark:hover:bg-slate-600 text-white rounded-xl font-bold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
+                        ▶ Play
+                    </button>
+                    <button id="download-midi" disabled class="px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl font-bold transition-all disabled:opacity-50">
+                        ⬇ MIDI
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Score Area -->
+            <main class="lg:col-span-9 space-y-6">
+                
+                <!-- AI Feedback Panel -->
+                <div id="ai-panel" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Title/Genre Card -->
+                    <div class="bg-gradient-to-br from-white to-blue-50 dark:from-slate-800 dark:to-slate-800/50 p-4 rounded-xl border border-blue-100 dark:border-slate-700 shadow-sm transition-colors">
+                        <div class="flex items-center gap-3 mb-2">
+                            <span class="text-2xl">🎵</span>
+                            <div>
+                                <h4 id="ai-title" class="text-lg font-black text-slate-800 dark:text-slate-200 leading-tight">Melodía</h4>
+                                <p id="ai-genre" class="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Género detectado</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Critique Card (New) -->
+                    <div id="critique-card" class="hidden bg-gradient-to-br from-white to-emerald-50 dark:from-slate-800 dark:to-slate-800/50 p-4 rounded-xl border border-emerald-100 dark:border-slate-700 shadow-sm transition-colors">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">👨‍🏫</span>
+                            <div class="w-full">
+                                <h4 class="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide mb-1">Evaluación</h4>
+                                <div id="ai-critique-content" class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                    <!-- Critique will appear here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lyrics Card -->
+                    <div id="lyrics-card" class="hidden md:col-span-2 bg-gradient-to-br from-white to-indigo-50 dark:from-slate-800 dark:to-slate-800/50 p-4 rounded-xl border border-indigo-100 dark:border-slate-700 shadow-sm transition-colors">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">✍️</span>
+                            <div class="w-full">
+                                <h4 class="text-sm font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide mb-1">Letra Sugerida</h4>
+                                <div id="ai-lyrics-content" class="text-sm text-slate-600 dark:text-slate-300 italic font-serif leading-relaxed whitespace-pre-line">
+                                    <!-- Lyrics will appear here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Canvas Container -->
+                <div id="score-container-wrapper" class="relative">
+                    <div id="score-output" class="score-paper">
+                        <div class="text-center opacity-20 py-20 dark:opacity-40">
+                            <svg class="w-24 h-24 mx-auto mb-4 text-current" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"></path></svg>
+                            <p class="text-xl font-bold tracking-tight">Sube un archivo o graba tu silbido</p>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Beam } = Vex.Flow;
+        const apiKey = ""; 
+
+        let audioCtx = null;
+        let lastBuffer = null;
+        let lastSourceType = 'file'; 
+        let notesData = []; 
+        let currentSynth = null;
+        let bpm = 120;
+        let mergeThreshold = 6; 
+        
+        // Variables de grabación
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let vuAnimationFrame = null;
+
+        let currentTitle = "Sin título";
+        let currentGenre = "Desconocido";
+
+        const dom = {};
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const ids = [
+                'audio-input', 'file-label', 'score-output', 'bpm-input', 'bpm-val', 
+                'play-btn', 'download-midi', 'merge-input', 'drop-zone', 'retranscribe-btn', 
+                'ai-status', 'ai-status-text', 'ai-panel', 'ai-title', 'ai-genre',
+                'btn-extend', 'btn-lyrics', 'lyrics-card', 'ai-lyrics-content',
+                'theme-toggle', 'record-btn', 'record-text', 'record-icon',
+                'mic-level-bar', 'upload-state-content', 'recording-state-content',
+                'btn-variation', 'btn-critique', 'critique-card', 'ai-critique-content'
+            ];
+            ids.forEach(id => dom[id.replace(/-([a-z])/g, g => g[1].toUpperCase())] = document.getElementById(id));
+
+            setupHandlers();
+            initAudio();
+            checkTheme();
+
+            window.addEventListener('resize', () => {
+                if (notesData.length > 0) renderScore(notesData);
+            });
+        });
+
+        function setupHandlers() {
+            dom.bpmInput.oninput = (e) => {
+                bpm = parseInt(e.target.value);
+                dom.bpmVal.textContent = bpm + " BPM";
+            };
+            
+            dom.mergeInput.oninput = (e) => { 
+                mergeThreshold = parseInt(e.target.value);
+            };
+            
+            dom.themeToggle.onclick = toggleTheme;
+
+            dom.btnExtend.onclick = extendMelody;
+            dom.btnLyrics.onclick = generateLyrics;
+            dom.btnVariation.onclick = generateVariation;
+            dom.btnCritique.onclick = analyzePerformance;
+
+            dom.audioInput.onchange = (e) => handleFile(e.target.files[0]);
+            
+            dom.retranscribeBtn.onclick = () => {
+                if (lastBuffer) {
+                    processAndRender(lastBuffer, lastSourceType);
+                }
+            };
+            
+            dom.playBtn.onclick = playAudio;
+            dom.downloadMidi.onclick = saveMidi;
+
+            // Handler de grabación
+            dom.recordBtn.onclick = toggleRecording;
+
+            const dz = dom.dropZone;
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                dz.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
+            });
+            dz.addEventListener('dragover', () => {
+                if(!isRecording) dz.classList.add('drag-active');
+            });
+            dz.addEventListener('dragleave', () => dz.classList.remove('drag-active'));
+            dz.addEventListener('drop', e => {
+                dz.classList.remove('drag-active');
+                if(!isRecording) handleFile(e.dataTransfer.files[0]);
+            });
+        }
+
+        // --- RECORDING & VISUALIZER LOGIC (LOGARITHMIC SCALE) ---
+        function visualizeVolume(analyser) {
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            const draw = () => {
+                if (!isRecording) return;
+                
+                requestAnimationFrame(draw);
+                analyser.getByteTimeDomainData(dataArray); 
+                
+                let sum = 0;
+                for(let i = 0; i < dataArray.length; i++) {
+                    const x = (dataArray[i] - 128) / 128; 
+                    sum += x * x;
+                }
+                const rms = Math.sqrt(sum / dataArray.length);
+                const db = 20 * Math.log10(Math.max(rms, 0.0001)); 
+                
+                const minDb = -50;
+                const maxDb = -5;
+                
+                let percent = ((db - minDb) / (maxDb - minDb)) * 100;
+                percent = Math.max(0, Math.min(100, percent));
+                
+                if (dom.micLevelBar) {
+                    dom.micLevelBar.style.width = `${percent}%`;
+                    
+                    if (percent > 95) { 
+                        dom.micLevelBar.classList.remove('bg-emerald-500');
+                        dom.micLevelBar.classList.add('bg-red-500');
+                    } else {
+                        dom.micLevelBar.classList.remove('bg-red-500');
+                        dom.micLevelBar.classList.add('bg-emerald-500');
+                    }
+                }
+            };
+            draw();
+        }
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                // START RECORDING
+                try {
+                    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    if (audioCtx.state === 'suspended') {
+                        await audioCtx.resume();
+                    }
+
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    const source = audioCtx.createMediaStreamSource(stream);
+                    const analyser = audioCtx.createAnalyser();
+                    analyser.fftSize = 256;
+                    analyser.smoothingTimeConstant = 0.8;
+                    source.connect(analyser);
+                    
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+
+                    mediaRecorder.onstop = async () => {
+                        cancelAnimationFrame(vuAnimationFrame);
+                        
+                        dom.uploadStateContent.classList.remove('hidden');
+                        dom.recordingStateContent.classList.add('hidden');
+                        dom.dropZone.classList.remove('recording-box');
+                        dom.recordBtn.classList.remove('recording-btn-active');
+                        dom.recordText.textContent = "Grabar Silbido";
+                        dom.recordIcon.textContent = "🎤";
+                        
+                        if(dom.micLevelBar) dom.micLevelBar.style.width = '0%';
+
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const arrayBuffer = await audioBlob.arrayBuffer();
+                        
+                        try {
+                            const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+                            lastBuffer = buffer;
+                            lastSourceType = 'mic';
+                            dom.fileLabel.textContent = "Grabación de micrófono";
+                            processAndRender(buffer, 'mic');
+                        } catch (e) {
+                            console.error(e);
+                            alert("Error procesando audio. ¿Estaba muy bajo?");
+                        }
+                        
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    isRecording = true;
+                    visualizeVolume(analyser);
+                    mediaRecorder.start();
+                    
+                    dom.uploadStateContent.classList.add('hidden');
+                    dom.recordingStateContent.classList.remove('hidden');
+                    dom.dropZone.classList.add('recording-box');
+                    dom.recordBtn.classList.add('recording-btn-active');
+                    dom.recordText.textContent = "Detener";
+                    dom.recordIcon.textContent = "⏹️";
+                    
+                } catch (err) {
+                    console.error("Error micrófono:", err);
+                    isRecording = false; 
+                    alert("No se pudo iniciar la grabación. Verifica los permisos del micrófono.");
+                }
+            } else {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                }
+                isRecording = false; 
+            }
+        }
+
+        // --- DARK MODE LOGIC ---
+        function checkTheme() {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            if (document.documentElement.classList.contains('dark')) {
+                localStorage.theme = 'dark';
+            } else {
+                localStorage.theme = 'light';
+            }
+            if (notesData.length > 0) renderScore(notesData);
+        }
+
+        function initAudio() {
+            currentSynth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.1, release: 1.2 }
+            }).toDestination();
+        }
+
+        async function handleFile(file) {
+            if (!file) return;
+            dom.fileLabel.textContent = file.name.length > 20 ? file.name.substring(0, 18) + "..." : file.name;
+            
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+                const buffer = await audioCtx.decodeAudioData(await file.arrayBuffer());
+                lastBuffer = buffer;
+                lastSourceType = 'file'; 
+                processAndRender(buffer, 'file');
+            } catch (e) {
+                console.error(e);
+                alert("Error procesando el audio.");
+            }
+        }
+
+        function processAndRender(buffer, sourceType) {
+            dom.aiStatus.classList.remove('hidden');
+            dom.aiStatusText.textContent = sourceType === 'mic' ? "Analizando grabación..." : "Analizando archivo...";
+            
+            dom.lyricsCard.classList.add('hidden');
+            dom.critiqueCard.classList.add('hidden');
+            dom.aiPanel.classList.add('hidden');
+
+            setTimeout(() => {
+                notesData = processWhistle(buffer, sourceType);
+                
+                if (notesData.length > 0) {
+                    renderScore(notesData);
+                    [dom.playBtn, dom.downloadMidi, dom.retranscribeBtn, dom.btnExtend, dom.btnLyrics, dom.btnVariation, dom.btnCritique].forEach(b => b.disabled = false);
+                    triggerIAAnalysis();
+                } else {
+                    const msg = sourceType === 'mic' 
+                        ? "No se detectaron notas claras. Intenta silbar más fuerte."
+                        : "El archivo parece vacío o demasiado silencioso.";
+                    alert(msg);
+                    dom.aiStatus.classList.add('hidden');
+                }
+            }, 50);
+        }
+
+        async function callGemini(prompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            try {
+                const response = await fetch(url, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ 
+                        contents: [{ parts: [{ text: prompt }] }], 
+                        generationConfig: { responseMimeType: "application/json" } 
+                    }) 
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error API: ${response.status}`);
+                }
+
+                const json = await response.json();
+                
+                const candidate = json.candidates?.[0];
+                if (!candidate?.content?.parts?.[0]?.text) {
+                    if (candidate?.finishReason === 'SAFETY') {
+                        throw new Error("Contenido bloqueado por filtros de seguridad.");
+                    }
+                    throw new Error("Respuesta vacía de la IA.");
+                }
+
+                let text = candidate.content.parts[0].text;
+                text = text.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+
+                return JSON.parse(text);
+
+            } catch(e) {
+                console.error("Gemini Error:", e);
+                throw e;
+            }
+        }
+
+        async function triggerIAAnalysis() {
+            if(notesData.length < 3) return;
+            
+            dom.aiStatus.classList.remove('hidden');
+            dom.aiStatusText.textContent = "Gemini identificando estilo...";
+
+            const melody = notesData.slice(0, 15).map(n => n.midi ? midiToName(n.midi).n : "silencio").join(",");
+            const prompt = `Actúa como un musicólogo experto. Analiza esta secuencia de notas: ${melody}. 
+            Responde con un JSON exacto: {"titulo": "Un título creativo y corto en español", "genero": "Género musical (ej: Jazz, Folk, Pop)"}`;
+            
+            try {
+                const data = await callGemini(prompt);
+                
+                dom.aiPanel.classList.remove('hidden');
+                dom.aiTitle.textContent = data.titulo;
+                dom.aiGenre.textContent = data.genero;
+                
+                currentTitle = data.titulo;
+                currentGenre = data.genero;
+
+            } catch(e) {
+                console.log("Error IA:", e);
+                dom.aiStatusText.textContent = "Error de conexión con IA";
+                setTimeout(() => dom.aiStatus.classList.add('hidden'), 2000);
+            } finally { 
+                if (!dom.aiStatusText.textContent.includes("Error")) {
+                    dom.aiStatus.classList.add('hidden'); 
+                }
+            }
+        }
+
+        async function extendMelody() {
+            if(notesData.length === 0) return;
+
+            dom.aiStatus.classList.remove('hidden');
+            dom.aiStatusText.textContent = "Gemini componiendo...";
+            dom.btnExtend.disabled = true;
+
+            const contextNotes = notesData.slice(-10); 
+            const prompt = `Eres un compositor experto. Continúa la siguiente melodía (formato JSON array de objetos {midi, beats}).
+            
+            Contexto (últimas notas): ${JSON.stringify(contextNotes)}
+            Estilo deseado: ${currentGenre}.
+            
+            TAREA: Genera 8 a 12 notas nuevas que sigan el flujo musical de forma natural.
+            REGLAS:
+            1. Devuelve SOLO un JSON Array válido: [{"midi": 60, "beats": 1}, ...].
+            2. 'midi' debe ser un entero entre 50 y 90.
+            3. 'beats' debe ser 0.25, 0.5, 1, o 2.
+            4. Intenta resolver la frase musical.
+            `;
+
+            try {
+                const newNotes = await callGemini(prompt);
+                
+                if(Array.isArray(newNotes)) {
+                    notesData = [...notesData, ...newNotes];
+                    renderScore(notesData);
+                    dom.scoreOutput.scrollLeft = dom.scoreOutput.scrollWidth;
+                }
+            } catch(e) {
+                console.error(e);
+                dom.aiStatusText.textContent = "Error al componer";
+                setTimeout(() => dom.aiStatus.classList.add('hidden'), 2000);
+            } finally {
+                if (!dom.aiStatusText.textContent.includes("Error")) {
+                    dom.aiStatus.classList.add('hidden');
+                }
+                dom.btnExtend.disabled = false;
+            }
+        }
+
+        async function generateVariation() {
+            if(notesData.length === 0) return;
+
+            dom.aiStatus.classList.remove('hidden');
+            dom.aiStatusText.textContent = "Gemini reimaginando...";
+            dom.btnVariation.disabled = true;
+
+            const prompt = `Eres un arreglista musical experto. Toma esta melodía completa: ${JSON.stringify(notesData)} y reescríbela ligeramente para cambiar su estilo.
+            
+            Elige un estilo al azar (Jazz, Barroco, Minimalista, etc) y adapta el ritmo y las notas.
+            Mantén la duración total aproximada.
+            
+            REGLAS:
+            1. Devuelve SOLO un JSON Array válido: [{"midi": 60, "beats": 1}, ...].
+            2. 'midi' debe ser un entero entre 50 y 90.
+            3. 'beats' debe ser 0.25, 0.5, 1, o 2.
+            `;
+
+            try {
+                const newNotes = await callGemini(prompt);
+                
+                if(Array.isArray(newNotes)) {
+                    notesData = newNotes;
+                    renderScore(notesData);
+                    alert("¡Estilo variado aplicado!");
+                }
+            } catch(e) {
+                console.error(e);
+                dom.aiStatusText.textContent = "Error al variar";
+                setTimeout(() => dom.aiStatus.classList.add('hidden'), 2000);
+            } finally {
+                if (!dom.aiStatusText.textContent.includes("Error")) {
+                    dom.aiStatus.classList.add('hidden');
+                }
+                dom.btnVariation.disabled = false;
+            }
+        }
+
+        async function analyzePerformance() {
+            dom.aiStatus.classList.remove('hidden');
+            dom.aiStatusText.textContent = "El profesor está escuchando...";
+            dom.btnCritique.disabled = true;
+
+            const prompt = `Actúa como un profesor de música de conservatorio amable pero exigente. Analiza esta secuencia de notas: ${JSON.stringify(notesData)}.
+            
+            Dame una evaluación en español de máximo 40 palabras.
+            Comenta sobre:
+            1. Variedad rítmica.
+            2. Rango tonal.
+            3. Una sugerencia constructiva.
+            
+            Devuelve un JSON exacto: {"critique": "Tu texto aquí..."}`;
+
+            try {
+                const data = await callGemini(prompt);
+                dom.critiqueCard.classList.remove('hidden');
+                dom.aiCritiqueContent.textContent = data.critique;
+            } catch(e) {
+                console.error(e);
+                dom.aiStatusText.textContent = "Error al analizar";
+                setTimeout(() => dom.aiStatus.classList.add('hidden'), 2000);
+            } finally {
+                if (!dom.aiStatusText.textContent.includes("Error")) {
+                    dom.aiStatus.classList.add('hidden');
+                }
+                dom.btnCritique.disabled = false;
+            }
+        }
+
+        async function generateLyrics() {
+            dom.aiStatus.classList.remove('hidden');
+            dom.aiStatusText.textContent = "Gemini escribiendo letra...";
+            dom.btnLyrics.disabled = true;
+
+            const prompt = `Eres un letrista de canciones profesional. Escribe una estrofa corta (4 líneas) en español para una canción titulada "${currentTitle}" del género "${currentGenre}".
+            
+            La letra debe encajar rítmicamente con una melodía alegre/melancólica según el título.
+            Devuelve un JSON exacto: {"lyrics": "línea 1\\nlínea 2\\nlínea 3\\nlínea 4"}`;
+
+            try {
+                const data = await callGemini(prompt);
+                dom.lyricsCard.classList.remove('hidden');
+                dom.aiLyricsContent.textContent = data.lyrics;
+            } catch(e) {
+                console.error(e);
+                dom.aiStatusText.textContent = "Error al escribir letra";
+                setTimeout(() => dom.aiStatus.classList.add('hidden'), 2000);
+            } finally {
+                if (!dom.aiStatusText.textContent.includes("Error")) {
+                    dom.aiStatus.classList.add('hidden');
+                }
+                dom.btnLyrics.disabled = false;
+            }
+        }
+
+        function processWhistle(buffer, sourceType) {
+            // STEP 1: NORMALIZATION
+            // Clone data to avoid messing up original playback buffer if needed
+            let data = new Float32Array(buffer.getChannelData(0));
+            
+            if (sourceType === 'mic') {
+                // Find peak
+                let maxPeak = 0;
+                for (let i = 0; i < data.length; i++) {
+                    if (Math.abs(data[i]) > maxPeak) maxPeak = Math.abs(data[i]);
+                }
+                
+                // If signal is not virtually silent, normalize it
+                if (maxPeak > 0.01) {
+                    const factor = 0.95 / maxPeak; // Target 95% volume
+                    for (let i = 0; i < data.length; i++) {
+                        data[i] *= factor;
+                    }
+                }
+            }
+
+            const sr = buffer.sampleRate;
+            const step = 512, win = 2048, frames = [];
+            
+            let maxVol = 0;
+            for(let i=0; i<data.length; i++) if(Math.abs(data[i]) > maxVol) maxVol = Math.abs(data[i]);
+            
+            // Now that data is normalized, we can use standard thresholds!
+            // Mic needs slightly lower threshold than clean file
+            const silenceThresh = sourceType === 'file' ? 0.15 : 0.08; 
+            
+            const yinTolerance = sourceType === 'file' ? 0.15 : 0.35; // Slightly stricter than before but still generous
+
+            for (let i = 0; i < data.length; i += step) {
+                const chunk = data.slice(i, i + win);
+                if (chunk.length < win) break;
+                const freq = getYin(chunk, sr, silenceThresh, yinTolerance);
+                frames.push(freq > 0 ? Math.round(69 + 12 * Math.log2(freq / 440)) : null);
+            }
+
+            return aggregateNotes(frames, step / sr);
+        }
+
+        function getYin(buf, sr, thresh, tolerance) {
+            let rms = 0;
+            for(let i=0; i<buf.length; i++) rms += buf[i]*buf[i];
+            
+            if (Math.sqrt(rms/buf.length) < thresh) return -1;
+            
+            let size = Math.floor(buf.length / 2), df = new Float32Array(size);
+            for (let t = 0; t < size; t++) {
+                for (let i = 0; i < size; i++) {
+                    let d = buf[i] - buf[i+t];
+                    df[t] += d*d;
+                }
+            }
+            let cmndf = new Float32Array(size); cmndf[0] = 1; let sum = 0;
+            for (let t = 1; t < size; t++) {
+                sum += df[t];
+                cmndf[t] = df[t] / ((1/t) * sum);
+            }
+            
+            for (let t = 1; t < size; t++) { if (cmndf[t] < tolerance) return sr / t; }
+            return -1;
+        }
+
+        function aggregateNotes(frames, frameDur) {
+            const spb = 60 / bpm;
+            const noteGroups = [];
+            let current = null;
+
+            const stabilityLimit = Math.max(2, 12 - mergeThreshold); 
+            let stabilityCounter = 0;
+            let candidateMidi = null;
+
+            frames.forEach((midi, i) => {
+                if (midi === candidateMidi) {
+                    stabilityCounter++;
+                } else {
+                    candidateMidi = midi;
+                    stabilityCounter = 0;
+                }
+
+                if (stabilityCounter >= stabilityLimit) {
+                    if (current && current.midi === candidateMidi) {
+                        current.endIndex = i;
+                    } else {
+                        if (current) {
+                            noteGroups.push({...current});
+                        }
+                        current = { midi: candidateMidi, startIndex: i, endIndex: i };
+                    }
+                }
+            });
+            if(current) noteGroups.push(current);
+
+            const events = [];
+            let lastEnd = 0;
+
+            noteGroups.forEach(g => {
+                const startTime = g.startIndex * frameDur;
+                const endTime = g.endIndex * frameDur;
+                const dur = endTime - startTime;
+
+                if (dur > 0.12) { 
+                    const silence = startTime - lastEnd;
+                    if (silence > 0.1) {
+                        let sb = Math.round((silence / spb) * 4) / 4;
+                        if (sb >= 0.25) events.push({ midi: null, beats: sb });
+                    }
+                    
+                    let nb = Math.round((dur / spb) * 4) / 4;
+                    if (nb < 0.25) nb = 0.25;
+                    events.push({ midi: g.midi, beats: nb });
+                    lastEnd = endTime;
+                }
+            });
+
+            return events;
+        }
+
+        // --- RENDER SCORE (Updated for Theme) ---
+        function renderScore(events) {
+            dom.scoreOutput.innerHTML = '';
+            
+            const containerWidth = dom.scoreOutput.clientWidth || 800;
+            const padding = 20;
+            const availableWidth = containerWidth - (padding * 2);
+            
+            let stavesPerRow = 1;
+            if (availableWidth > 1100) stavesPerRow = 3;
+            else if (availableWidth > 700) stavesPerRow = 2;
+            
+            const staveWidth = Math.floor(availableWidth / stavesPerRow);
+
+            const renderer = new Renderer(dom.scoreOutput, Renderer.Backends.SVG);
+            const context = renderer.getContext();
+            
+            const isDark = document.documentElement.classList.contains('dark');
+            const mainColor = isDark ? '#f1f5f9' : '#1e293b'; 
+            
+            context.setFont("Inter", 12, "").setBackgroundFillStyle(isDark ? "#1e293b" : "#ffffff");
+            context.setFillStyle(mainColor);
+            context.setStrokeStyle(mainColor);
+            
+            let measures = [], currentM = [], currentSum = 0;
+
+            events.forEach((ev, idx) => {
+                let rem = 4 - currentSum;
+                let actual = Math.min(ev.beats, rem);
+                
+                if (actual <= 0) {
+                    measures.push([...currentM]);
+                    currentM = []; currentSum = 0; rem = 4;
+                    actual = Math.min(ev.beats, rem);
+                }
+
+                const info = ev.midi ? midiToName(ev.midi) : { n: "b", o: "4", a: null, r: true };
+                const noteKeys = info.r ? ["b/4"] : [`${info.n}/${info.o}`];
+                
+                const sn = new StaveNote({ 
+                    keys: noteKeys, 
+                    duration: beatsToVex(actual) + (info.r ? "r" : ""),
+                    stem_direction: -1 
+                });
+                
+                sn.setStyle({fillStyle: mainColor, strokeStyle: mainColor});
+
+                if (info.a && !info.r) sn.addModifier(new Accidental(info.a));
+                currentM.push(sn);
+                currentSum += actual;
+
+                if (idx === events.length - 1 && currentSum > 0) {
+                     while (currentSum < 4) {
+                        let fill = Math.min(4 - currentSum, 1);
+                        if(4 - currentSum >= 1) fill = 1; 
+                        else fill = 0.5;
+                        
+                        const filler = new StaveNote({ keys: ["b/4"], duration: beatsToVex(fill) + "r", stem_direction: -1 });
+                        filler.setStyle({fillStyle: mainColor, strokeStyle: mainColor});
+                        currentM.push(filler);
+                        currentSum += fill;
+                    }
+                    measures.push([...currentM]);
+                } else if (currentSum >= 4) {
+                    measures.push([...currentM]);
+                    currentM = []; currentSum = 0;
+                }
+            });
+            if (currentM.length > 0 && currentSum < 4) measures.push(currentM);
+
+            const rowHeight = 150;
+            const totalRows = Math.ceil(measures.length / stavesPerRow);
+            renderer.resize(containerWidth, totalRows * rowHeight + 50);
+
+            measures.forEach((m, i) => {
+                const row = Math.floor(i / stavesPerRow);
+                const col = i % stavesPerRow;
+                
+                const x = col * staveWidth + 10;
+                const y = row * rowHeight + 20;
+                
+                const stave = new Stave(x, y, staveWidth);
+                
+                if (i === 0 || col === 0) {
+                    stave.addClef("treble").addTimeSignature("4/4");
+                    stave.setBegBarType(Vex.Flow.Barline.type.SINGLE);
+                }
+                
+                if (i === measures.length - 1) {
+                     stave.setEndBarType(Vex.Flow.Barline.type.END);
+                } else if (col === stavesPerRow - 1) {
+                     stave.setEndBarType(Vex.Flow.Barline.type.SINGLE);
+                }
+
+                stave.setContext(context).draw();
+
+                try {
+                    const voice = new Voice({ num_beats: 4, beat_value: 4 }).setMode(Voice.Mode.SOFT);
+                    voice.addTickables(m);
+                    
+                    const startX = stave.getNoteStartX();
+                    const availableVoiceWidth = (stave.getX() + stave.getWidth()) - startX - 20;
+
+                    new Formatter().joinVoices([voice]).format([voice], availableVoiceWidth);
+                    
+                    const beams = Beam.generateBeams(m, { 
+                        groups: [new Vex.Flow.Fraction(1, 4)], 
+                        stem_direction: -1 
+                    });
+                    
+                    beams.forEach(b => b.setStyle({fillStyle: mainColor, strokeStyle: mainColor}));
+
+                    voice.draw(context, stave);
+                    beams.forEach(b => b.setContext(context).draw());
+
+                } catch(e) {
+                    // console.warn("Error dibujando compás", i, e);
+                }
+            });
+        }
+
+        function beatsToVex(b) {
+            if (b >= 4) return "w"; 
+            if (b >= 2) return "h";
+            if (b >= 1) return "q"; 
+            if (b >= 0.5) return "8";
+            return "16";
+        }
+
+        function midiToName(m) {
+            const names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+            const n = names[m % 12];
+            return { n: n.replace('#',''), o: Math.floor(m/12)-1, a: n.includes('#')?'#':null };
+        }
+
+        function playAudio() {
+            Tone.start(); 
+            const now = Tone.now();
+            const spb = 60 / bpm; 
+            let t = 0;
+            
+            notesData.forEach(ev => {
+                if (ev.midi) {
+                    currentSynth.triggerAttackRelease(
+                        Tone.Frequency(ev.midi, "midi").toFrequency(), 
+                        ev.beats * spb * 0.9, 
+                        now + t
+                    );
+                }
+                t += ev.beats * spb;
+            });
+        }
+
+        function saveMidi() {
+            const track = new MidiWriter.Track();
+            track.addEvent(new MidiWriter.ProgramChangeEvent({instrument: 1}));
+            
+            notesData.forEach(ev => {
+                if (!ev.midi) {
+                    track.addEvent(new MidiWriter.WaitEvent({ duration: beatsToVex(ev.beats) }));
+                } else {
+                    const pitchInfo = midiToName(ev.midi);
+                    const pitch = (pitchInfo.n + (pitchInfo.a || '')).toUpperCase() + pitchInfo.o;
+                    track.addEvent(new MidiWriter.NoteEvent({ 
+                        pitch: [pitch], 
+                        duration: beatsToVex(ev.beats) 
+                    }));
+                }
+            });
+            
+            const write = new MidiWriter.Writer(track);
+            const link = document.createElement('a'); 
+            link.href = write.dataUri(); 
+            link.download = `AudioScore-${currentTitle.replace(/\s+/g, '-')}.mid`; 
+            link.click();
+        }
+    </script>
+</body>
+</html>
