@@ -25,6 +25,8 @@ window.App = {
     currentTitle: "Sin título",
     currentGenre: "Desconocido",
     apiKey: "", // To be populated or injected
+    currentModel: "gemini-1.5-flash", // Default model
+    customModel: "", // User override
     
     // DOM Cache
     dom: {}

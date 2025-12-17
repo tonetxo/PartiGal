@@ -18,11 +18,7 @@ class MainActivity : AppCompatActivity() {
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
-            // Permiso concedido
-        }
-    }
+    ) { isGranted: Boolean -> }
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -30,9 +26,7 @@ class MainActivity : AppCompatActivity() {
         if (fileUploadCallback != null) {
             val results = if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
                 android.webkit.WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-            } else {
-                null
-            }
+            } else { null }
             fileUploadCallback?.onReceiveValue(results)
             fileUploadCallback = null
         }
@@ -40,7 +34,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -50,43 +43,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupWebView() {
         binding.webview.apply {
-            // Configuración de Settings
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true 
                 mediaPlaybackRequiresUserGesture = false 
                 allowFileAccess = true
                 allowContentAccess = true
+                allowUniversalAccessFromFileURLs = true
             }
 
             webViewClient = WebViewClient()
 
             webChromeClient = object : WebChromeClient() {
                 override fun onPermissionRequest(request: PermissionRequest) {
-                    runOnUiThread {
-                        request.grant(request.resources)
-                    }
+                    runOnUiThread { request.grant(request.resources) }
                 }
 
-                // Habilitar input file
                 override fun onShowFileChooser(
                     webView: android.webkit.WebView?,
                     filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
                     fileChooserParams: FileChooserParams?
                 ): Boolean {
-                    if (fileUploadCallback != null) {
-                        fileUploadCallback?.onReceiveValue(null)
-                    }
                     fileUploadCallback = filePathCallback
-
                     val intent = fileChooserParams?.createIntent()
-                    try {
-                        if (intent != null) {
-                            fileChooserLauncher.launch(intent)
-                        }
-                    } catch (e: Exception) {
+                    try { fileChooserLauncher.launch(intent) } 
+                    catch (e: Exception) { 
                         fileUploadCallback = null
-                        return false
+                        return false 
                     }
                     return true
                 }
@@ -97,23 +80,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAndroidPermissions() {
-        if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
-    /**
-     * Métodos nativos (aún disponibles si decidimos migrar lógica JS a C++)
-     */
     external fun stringFromJNI(): String
 
     companion object {
-        init {
-            System.loadLibrary("partigal")
-        }
+        init { System.loadLibrary("partigal") }
     }
 }

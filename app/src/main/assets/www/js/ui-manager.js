@@ -9,7 +9,7 @@ App.initUI = function() {
         'theme-toggle', 'record-btn', 'record-text', 'record-icon',
         'mic-level-bar', 'upload-state-content', 'recording-state-content',
         'btn-variation', 'btn-critique', 'critique-card', 'ai-critique-content',
-        'api-key-input'
+        'api-key-input', 'model-select', 'custom-model-input'
     ];
     
     // Map IDs to App.dom
@@ -25,6 +25,20 @@ App.initUI = function() {
         if(App.dom.apiKeyInput) App.dom.apiKeyInput.value = savedKey;
     }
 
+    // Load saved Model Selection
+    const savedModel = localStorage.getItem('gemini_model');
+    if (savedModel) {
+        App.currentModel = savedModel;
+        if(App.dom.modelSelect) App.dom.modelSelect.value = savedModel;
+    }
+
+    // Load saved Custom Model
+    const savedCustomModel = localStorage.getItem('gemini_custom_model');
+    if (savedCustomModel) {
+        App.customModel = savedCustomModel;
+        if(App.dom.customModelInput) App.dom.customModelInput.value = savedCustomModel;
+    }
+
     App.setupHandlers();
     App.initAudio();
 };
@@ -35,6 +49,18 @@ App.setupHandlers = function() {
         const key = e.target.value.trim();
         App.apiKey = key;
         localStorage.setItem('gemini_api_key', key);
+    };
+
+    // Model Selector Handler
+    App.dom.modelSelect.onchange = (e) => {
+        App.currentModel = e.target.value;
+        localStorage.setItem('gemini_model', App.currentModel);
+    };
+
+    // Custom Model Input Handler
+    App.dom.customModelInput.oninput = (e) => {
+        App.customModel = e.target.value.trim();
+        localStorage.setItem('gemini_custom_model', App.customModel);
     };
 
     App.dom.bpmInput.oninput = (e) => {

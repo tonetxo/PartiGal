@@ -79,7 +79,8 @@ App.renderScore = function(events) {
         const row = Math.floor(i / stavesPerRow);
         const col = i % stavesPerRow;
         
-        const x = col * staveWidth + 10;
+        // Align strictly to the left (x=0 relative to column)
+        const x = col * staveWidth; 
         const y = row * rowHeight + 20;
         
         const stave = new Stave(x, y, staveWidth);

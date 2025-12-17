@@ -1,9 +1,17 @@
-// Gemini AI Integration
+// Gemini AI Integration (Direct API Key)
 
 App.callGemini = async function(prompt) {
-    // WARNING: In a real app, do not expose API Keys in client-side code.
-    // Ideally, this should be a call to your backend or a Firebase function.
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${App.apiKey}`;
+    if (!App.apiKey || App.apiKey.length < 5) {
+        alert("⚠️ Por favor, introduce una API Key válida en Ajustes.");
+        throw new Error("Missing API Key");
+    }
+
+    // Prioridad: Custom Input > Selector > Default
+    const model = App.customModel || App.currentModel || "gemini-1.5-flash-002";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${App.apiKey}`;
+    
+    console.log(`Calling API [${model}]...`);
+
     try {
         const response = await fetch(url, { 
             method: 'POST', 
@@ -15,7 +23,17 @@ App.callGemini = async function(prompt) {
         });
 
         if (!response.ok) {
-            throw new Error(`Error API: ${response.status}`);
+            const errorText = await response.text();
+            console.error("API Error:", errorText);
+            
+            if (response.status === 404) {
+                alert(`Error 404: El modelo "${model}" no existe o no tienes acceso. Prueba con "gemini-1.5-flash".`);
+            } else if (response.status === 429) {
+                alert("Error 429: Cuota excedida. Cambia a 'gemini-1.5-flash' (estable) o espera un poco.");
+            } else {
+                alert(`Error ${response.status}: ${response.statusText}`);
+            }
+            throw new Error(`API Error ${response.status}`);
         }
 
         const json = await response.json();
@@ -23,7 +41,7 @@ App.callGemini = async function(prompt) {
         const candidate = json.candidates?.[0];
         if (!candidate?.content?.parts?.[0]?.text) {
             if (candidate?.finishReason === 'SAFETY') {
-                throw new Error("Contenido bloqueado por filtros de seguridad.");
+                throw new Error("Contenido bloqueado por seguridad.");
             }
             throw new Error("Respuesta vacía de la IA.");
         }
@@ -34,10 +52,12 @@ App.callGemini = async function(prompt) {
         return JSON.parse(text);
 
     } catch(e) {
-        console.error("Gemini Error:", e);
+        console.error("Gemini Logic Error:", e);
         throw e;
     }
 };
+
+// --- Business Logic Functions ---
 
 App.triggerIAAnalysis = async function() {
     if(App.notesData.length < 3) return;
@@ -53,16 +73,15 @@ App.triggerIAAnalysis = async function() {
         const data = await App.callGemini(prompt);
         
         App.dom.aiPanel.classList.remove('hidden');
-        App.dom.aiTitle.textContent = data.titulo;
-        App.dom.aiGenre.textContent = data.genero;
+        App.dom.aiTitle.textContent = data.titulo || "Título IA";
+        App.dom.aiGenre.textContent = data.genero || "Experimental";
         
         App.currentTitle = data.titulo;
         App.currentGenre = data.genero;
 
     } catch(e) {
-        console.log("Error IA:", e);
-        App.dom.aiStatusText.textContent = "Error de conexión con IA";
-        setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
+        App.dom.aiStatusText.textContent = "Error IA (ver consola)";
+        setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 3000);
     } finally { 
         if (!App.dom.aiStatusText.textContent.includes("Error")) {
             App.dom.aiStatus.classList.add('hidden'); 
@@ -88,7 +107,6 @@ App.extendMelody = async function() {
     1. Devuelve SOLO un JSON Array válido: [{"midi": 60, "beats": 1}, ...].
     2. 'midi' debe ser un entero entre 50 y 90.
     3. 'beats' debe ser 0.25, 0.5, 1, o 2.
-    4. Intenta resolver la frase musical. 
     `;
 
     try {
@@ -100,7 +118,6 @@ App.extendMelody = async function() {
             App.dom.scoreOutput.scrollLeft = App.dom.scoreOutput.scrollWidth;
         }
     } catch(e) {
-        console.error(e);
         App.dom.aiStatusText.textContent = "Error al componer";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
@@ -118,15 +135,13 @@ App.generateVariation = async function() {
     App.dom.aiStatusText.textContent = "Gemini reimaginando...";
     App.dom.btnVariation.disabled = true;
 
-    const prompt = `Eres un arreglista musical experto. Toma esta melodía completa: ${JSON.stringify(App.notesData)} y reescríbela ligeramente para cambiar su estilo. 
+    const prompt = `Eres un arreglista musical experto. Toma esta melodía completa: ${JSON.stringify(App.notesData)} y reescríbela ligeramente para cambiar su estilo.
     
     Elige un estilo al azar (Jazz, Barroco, Minimalista, etc) y adapta el ritmo y las notas.
     Mantén la duración total aproximada.
     
     REGLAS:
     1. Devuelve SOLO un JSON Array válido: [{"midi": 60, "beats": 1}, ...].
-    2. 'midi' debe ser un entero entre 50 y 90.
-    3. 'beats' debe ser 0.25, 0.5, 1, o 2.
     `;
 
     try {
@@ -135,10 +150,8 @@ App.generateVariation = async function() {
         if(Array.isArray(newNotes)) {
             App.notesData = newNotes;
             App.renderScore(App.notesData);
-            alert("¡Estilo variado aplicado!");
         }
     } catch(e) {
-        console.error(e);
         App.dom.aiStatusText.textContent = "Error al variar";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
@@ -154,7 +167,7 @@ App.analyzePerformance = async function() {
     App.dom.aiStatusText.textContent = "El profesor está escuchando...";
     App.dom.btnCritique.disabled = true;
 
-    const prompt = `Actúa como un profesor de música de conservatorio amable pero exigente. Analiza esta secuencia de notas: ${JSON.stringify(App.notesData)}. 
+    const prompt = `Actúa como un profesor de música de conservatorio amable pero exigente. Analiza esta secuencia de notas: ${JSON.stringify(App.notesData)}.
     
     Dame una evaluación en español de máximo 40 palabras.
     Comenta sobre:
@@ -167,9 +180,8 @@ App.analyzePerformance = async function() {
     try {
         const data = await App.callGemini(prompt);
         App.dom.critiqueCard.classList.remove('hidden');
-        App.dom.aiCritiqueContent.textContent = data.critique;
+        App.dom.aiCritiqueContent.textContent = data.critique || data.text || "Sin crítica disponible.";
     } catch(e) {
-        console.error(e);
         App.dom.aiStatusText.textContent = "Error al analizar";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
@@ -193,9 +205,8 @@ App.generateLyrics = async function() {
     try {
         const data = await App.callGemini(prompt);
         App.dom.lyricsCard.classList.remove('hidden');
-        App.dom.aiLyricsContent.textContent = data.lyrics;
+        App.dom.aiLyricsContent.textContent = data.lyrics || "Error generando letra.";
     } catch(e) {
-        console.error(e);
         App.dom.aiStatusText.textContent = "Error al escribir letra";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
