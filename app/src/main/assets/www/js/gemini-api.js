@@ -1,35 +1,37 @@
 // Gemini AI Integration (Direct API Key)
 
-App.callGemini = async function(prompt) {
+App.callGemini = async function (prompt) {
     if (!App.apiKey || App.apiKey.length < 5) {
         alert("⚠️ Por favor, introduce una API Key válida en Ajustes.");
         throw new Error("Missing API Key");
     }
 
     // Prioridad: Custom Input > Selector > Default
-    const model = App.customModel || App.currentModel || "gemini-1.5-flash-002";
+    const model = App.customModel || App.currentModel || "gemini-3-flash-preview";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${App.apiKey}`;
-    
+
     console.log(`Calling API [${model}]...`);
 
     try {
-        const response = await fetch(url, { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({ 
-                contents: [{ parts: [{ text: prompt }] }], 
-                generationConfig: { responseMimeType: "application/json" } 
-            }) 
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: "application/json" }
+            })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error("API Error:", errorText);
-            
+
             if (response.status === 404) {
-                alert(`Error 404: El modelo "${model}" no existe o no tienes acceso. Prueba con "gemini-1.5-flash".`);
+                alert(`Error 404: El modelo "${model}" no está disponible. Usa 'gemini-1.5-flash' o revisa el ID del modelo personalizado.`);
             } else if (response.status === 429) {
-                alert("Error 429: Cuota excedida. Cambia a 'gemini-1.5-flash' (estable) o espera un poco.");
+                alert("Error 429: Cuota superada. Espera un minuto o cambia a un modelo más ligero como 'gemini-1.5-flash-8b'.");
+            } else if (response.status === 403) {
+                alert("Error 403: API Key no válida o sin permisos para este modelo.");
             } else {
                 alert(`Error ${response.status}: ${response.statusText}`);
             }
@@ -37,7 +39,7 @@ App.callGemini = async function(prompt) {
         }
 
         const json = await response.json();
-        
+
         const candidate = json.candidates?.[0];
         if (!candidate?.content?.parts?.[0]?.text) {
             if (candidate?.finishReason === 'SAFETY') {
@@ -51,17 +53,46 @@ App.callGemini = async function(prompt) {
 
         return JSON.parse(text);
 
-    } catch(e) {
+    } catch (e) {
         console.error("Gemini Logic Error:", e);
         throw e;
     }
 };
 
+App.testConnection = async function () {
+    if (!App.apiKey) return alert("Primero introduce una API Key.");
+
+    App.dom.aiStatus.classList.remove('hidden');
+    App.dom.aiStatusText.textContent = "Probando conexión...";
+
+    try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${App.apiKey}`);
+        const data = await response.json();
+
+        if (data.models) {
+            const names = data.models.map(m => m.name.replace('models/', '')).filter(n => n.includes('gemini'));
+            alert(`✅ Conexión Exitosa.\n\nModelos disponibles:\n${names.join('\n')}`);
+            console.log("Available Models:", names);
+        } else {
+            alert("⚠️ Conexión establecida pero no se encontraron modelos. ¿Tu API Key tiene permisos?");
+            console.error("No models found:", data);
+        }
+    } catch (e) {
+        alert(`❌ Error de Conexión: ${e.message}`);
+    } finally {
+        App.dom.aiStatus.classList.add('hidden');
+    }
+};
+
 // --- Business Logic Functions ---
 
-App.composeArrangement = async function() {
-    if(App.notesData.length === 0) return;
-    
+App.composeArrangement = async function () {
+    console.log("Composing arrangement..."); // Debug log
+    if (App.notesData.length === 0) {
+        alert("⚠️ Primero debes grabar o cargar una melodía.");
+        return;
+    }
+
     const userPrompt = App.dom.composerPrompt.value.trim();
     if (!userPrompt) {
         alert("Por favor, escribe una descripción para el arreglo (ej: 'Estilo Jazz').");
@@ -73,7 +104,7 @@ App.composeArrangement = async function() {
     App.dom.btnCompose.disabled = true;
 
     // Simplify melody for token efficiency
-    const seedMelody = App.notesData.map(n => ({m: n.midi, b: n.beats}));
+    const seedMelody = App.notesData.map(n => ({ m: n.midi, b: n.beats }));
 
     const prompt = `Actúa como un compositor y arreglista experto.
     
@@ -100,18 +131,18 @@ App.composeArrangement = async function() {
 
     try {
         const result = await App.callGemini(prompt);
-        
-        if(result && result.tracks) {
+
+        if (result && result.tracks) {
             App.arrangementData = result;
             alert(`¡Arreglo compuesto!\n\nPistas generadas: ${result.tracks.map(t => t.instrument).join(', ')}.\n\nDale a PLAY para escuchar.`);
-            
+
             // Highlight play button
             App.dom.playBtn.classList.add('animate-pulse');
             setTimeout(() => App.dom.playBtn.classList.remove('animate-pulse'), 2000);
         } else {
             throw new Error("Formato JSON incorrecto");
         }
-    } catch(e) {
+    } catch (e) {
         App.dom.aiStatusText.textContent = "Error al arreglar";
         console.error(e);
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
@@ -123,44 +154,44 @@ App.composeArrangement = async function() {
     }
 };
 
-App.triggerIAAnalysis = async function() {
-    if(App.notesData.length < 3) return;
-    
+App.triggerIAAnalysis = async function () {
+    if (App.notesData.length < 3) return;
+
     App.dom.aiStatus.classList.remove('hidden');
     App.dom.aiStatusText.textContent = "Gemini identificando estilo...";
 
     const melody = App.notesData.slice(0, 15).map(n => n.midi ? App.midiToName(n.midi).n : "silencio").join(",");
     const prompt = `Actúa como un musicólogo experto. Analiza esta secuencia de notas: ${melody}. 
     Responde con un JSON exacto: {"titulo": "Un título creativo y corto en español", "genero": "Género musical (ej: Jazz, Folk, Pop)"}`;
-    
+
     try {
         const data = await App.callGemini(prompt);
-        
+
         App.dom.aiPanel.classList.remove('hidden');
         App.dom.aiTitle.textContent = data.titulo || "Título IA";
         App.dom.aiGenre.textContent = data.genero || "Experimental";
-        
+
         App.currentTitle = data.titulo;
         App.currentGenre = data.genero;
 
-    } catch(e) {
+    } catch (e) {
         App.dom.aiStatusText.textContent = "Error IA (ver consola)";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 3000);
-    } finally { 
+    } finally {
         if (!App.dom.aiStatusText.textContent.includes("Error")) {
-            App.dom.aiStatus.classList.add('hidden'); 
+            App.dom.aiStatus.classList.add('hidden');
         }
     }
 };
 
-App.extendMelody = async function() {
-    if(App.notesData.length === 0) return;
+App.extendMelody = async function () {
+    if (App.notesData.length === 0) return;
 
     App.dom.aiStatus.classList.remove('hidden');
     App.dom.aiStatusText.textContent = "Gemini componiendo...";
     App.dom.btnExtend.disabled = true;
 
-    const contextNotes = App.notesData.slice(-10); 
+    const contextNotes = App.notesData.slice(-10);
     const prompt = `Eres un compositor experto. Continúa la siguiente melodía (formato JSON array de objetos {midi, beats}).
     
     Contexto (últimas notas): ${JSON.stringify(contextNotes)}
@@ -175,13 +206,13 @@ App.extendMelody = async function() {
 
     try {
         const newNotes = await App.callGemini(prompt);
-        
-        if(Array.isArray(newNotes)) {
+
+        if (Array.isArray(newNotes)) {
             App.notesData = [...App.notesData, ...newNotes];
             App.renderScore(App.notesData);
             App.dom.scoreOutput.scrollLeft = App.dom.scoreOutput.scrollWidth;
         }
-    } catch(e) {
+    } catch (e) {
         App.dom.aiStatusText.textContent = "Error al componer";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
@@ -192,8 +223,8 @@ App.extendMelody = async function() {
     }
 };
 
-App.generateVariation = async function() {
-    if(App.notesData.length === 0) return;
+App.generateVariation = async function () {
+    if (App.notesData.length === 0) return;
 
     App.dom.aiStatus.classList.remove('hidden');
     App.dom.aiStatusText.textContent = "Gemini reimaginando...";
@@ -210,12 +241,12 @@ App.generateVariation = async function() {
 
     try {
         const newNotes = await App.callGemini(prompt);
-        
-        if(Array.isArray(newNotes)) {
+
+        if (Array.isArray(newNotes)) {
             App.notesData = newNotes;
             App.renderScore(App.notesData);
         }
-    } catch(e) {
+    } catch (e) {
         App.dom.aiStatusText.textContent = "Error al variar";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
@@ -226,7 +257,7 @@ App.generateVariation = async function() {
     }
 };
 
-App.analyzePerformance = async function() {
+App.analyzePerformance = async function () {
     App.dom.aiStatus.classList.remove('hidden');
     App.dom.aiStatusText.textContent = "El profesor está escuchando...";
     App.dom.btnCritique.disabled = true;
@@ -245,7 +276,7 @@ App.analyzePerformance = async function() {
         const data = await App.callGemini(prompt);
         App.dom.critiqueCard.classList.remove('hidden');
         App.dom.aiCritiqueContent.textContent = data.critique || data.text || "Sin crítica disponible.";
-    } catch(e) {
+    } catch (e) {
         App.dom.aiStatusText.textContent = "Error al analizar";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
@@ -256,7 +287,7 @@ App.analyzePerformance = async function() {
     }
 };
 
-App.generateLyrics = async function() {
+App.generateLyrics = async function () {
     App.dom.aiStatus.classList.remove('hidden');
     App.dom.aiStatusText.textContent = "Gemini escribiendo letra...";
     App.dom.btnLyrics.disabled = true;
@@ -270,7 +301,7 @@ App.generateLyrics = async function() {
         const data = await App.callGemini(prompt);
         App.dom.lyricsCard.classList.remove('hidden');
         App.dom.aiLyricsContent.textContent = data.lyrics || "Error generando letra.";
-    } catch(e) {
+    } catch (e) {
         App.dom.aiStatusText.textContent = "Error al escribir letra";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {

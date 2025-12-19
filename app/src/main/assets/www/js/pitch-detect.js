@@ -1,6 +1,6 @@
 // Pitch Detection & Signal Processing
 
-App.processWhistle = async function(rawBuffer, sourceType) {
+App.processWhistle = async function (rawBuffer, sourceType) {
     // PRE-PROCESSING: Filtering & Compression to clean up mic noise
     // We use OfflineAudioContext to render the audio through filters "instantly"
     const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(
@@ -10,23 +10,23 @@ App.processWhistle = async function(rawBuffer, sourceType) {
     const source = offlineCtx.createBufferSource();
     source.buffer = rawBuffer;
 
-    // 1. Highpass Filter (Remove wind/breath rumble below 600Hz)
+    // 1. Highpass Filter (Remove wind/breath rumble below 200Hz)
     const highpass = offlineCtx.createBiquadFilter();
     highpass.type = "highpass";
-    highpass.frequency.value = 600;
+    highpass.frequency.value = 200;
 
-    // 2. Lowpass Filter (Remove hiss/clicks above 4000Hz)
+    // 2. Lowpass Filter (Whistling can go high, up to 5-6kHz)
     const lowpass = offlineCtx.createBiquadFilter();
     lowpass.type = "lowpass";
-    lowpass.frequency.value = 4000;
+    lowpass.frequency.value = 6000;
 
-    // 3. Compressor (Even out dynamics)
+    // 3. Soft Compressor (Avoid crushing the signal too much)
     const compressor = offlineCtx.createDynamicsCompressor();
-    compressor.threshold.value = -50;
-    compressor.knee.value = 40;
-    compressor.ratio.value = 12;
-    compressor.attack.value = 0;
-    compressor.release.value = 0.25;
+    compressor.threshold.value = -30;
+    compressor.knee.value = 30;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.01;
+    compressor.release.value = 0.1;
 
     // Chain: Source -> HP -> LP -> Compressor -> Destination
     source.connect(highpass);
@@ -38,7 +38,7 @@ App.processWhistle = async function(rawBuffer, sourceType) {
 
     // Render the filtered audio
     const filteredBuffer = await offlineCtx.startRendering();
-    
+
     // NOW PROCESS DATA
     let data = new Float32Array(filteredBuffer.getChannelData(0));
 
@@ -47,7 +47,7 @@ App.processWhistle = async function(rawBuffer, sourceType) {
     for (let i = 0; i < data.length; i++) {
         if (Math.abs(data[i]) > maxPeak) maxPeak = Math.abs(data[i]);
     }
-    
+
     // Aggressive boost for weak mobile signals
     if (maxPeak > 0.001) {
         const factor = 0.95 / maxPeak;
@@ -58,24 +58,25 @@ App.processWhistle = async function(rawBuffer, sourceType) {
 
     const sr = filteredBuffer.sampleRate;
     const step = 512, win = 2048, frames = [];
-    
+
     // Thresholds optimized for FILTERED audio
     // We can be slightly stricter now that noise is gone to avoid false positives
-    const silenceThresh = 0.03; 
-    const yinTolerance = 0.40; // Generous tolerance for whistle waveform
+    const silenceThresh = 0.01; // More sensitivity for weak whistles
+    const yinTolerance = 0.25; // Balanced tolerance
 
     for (let i = 0; i < data.length; i += step) {
         const chunk = data.slice(i, i + win);
         if (chunk.length < win) break;
         const freq = App.getYin(chunk, sr, silenceThresh, yinTolerance);
-        frames.push(freq > 0 ? Math.round(69 + 12 * Math.log2(freq / 440)) : null);
+        // Do not round here! Aggregate with float for better precision
+        frames.push(freq > 0 ? (69 + 12 * Math.log2(freq / 440)) : null);
     }
 
     // APPLY MEDIAN FILTER TO FRAMES (Remove erratic blips)
     const filteredFrames = [];
     for (let i = 0; i < frames.length; i++) {
         const window = [];
-        for (let j = -2; j <= 2; j++) {
+        for (let j = -1; j <= 1; j++) { // Smaller window (3) to avoid smearing
             if (frames[i + j] !== undefined && frames[i + j] !== null) {
                 window.push(frames[i + j]);
             }
@@ -91,30 +92,44 @@ App.processWhistle = async function(rawBuffer, sourceType) {
     return App.aggregateNotes(filteredFrames, step / sr);
 };
 
-App.getYin = function(buf, sr, thresh, tolerance) {
+App.getYin = function (buf, sr, thresh, tolerance) {
     let rms = 0;
-    for(let i=0; i<buf.length; i++) rms += buf[i]*buf[i];
-    
-    if (Math.sqrt(rms/buf.length) < thresh) return -1;
-    
+    for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+
+    if (Math.sqrt(rms / buf.length) < thresh) return -1;
+
     let size = Math.floor(buf.length / 2), df = new Float32Array(size);
     for (let t = 0; t < size; t++) {
         for (let i = 0; i < size; i++) {
-            let d = buf[i] - buf[i+t];
-            df[t] += d*d;
+            let d = buf[i] - buf[i + t];
+            df[t] += d * d;
         }
     }
     let cmndf = new Float32Array(size); cmndf[0] = 1; let sum = 0;
     for (let t = 1; t < size; t++) {
         sum += df[t];
-        cmndf[t] = df[t] / ((1/t) * sum);
+        cmndf[t] = df[t] / ((1 / t) * sum);
     }
-    
-    for (let t = 1; t < size; t++) { if (cmndf[t] < tolerance) return sr / t; }
+
+    for (let t = 1; t < size; t++) {
+        if (cmndf[t] < tolerance) {
+            // Found a candidate, find the local minimum for better accuracy
+            // Search for the minimum in the next few samples to refine the pitch
+            let minVal = cmndf[t];
+            let minIdx = t;
+            for (let j = t + 1; j < size && j < t + 10; j++) { // Search up to 10 samples ahead
+                if (cmndf[j] < minVal) {
+                    minVal = cmndf[j];
+                    minIdx = j;
+                }
+            }
+            return sr / minIdx;
+        }
+    }
     return -1;
 };
 
-App.aggregateNotes = function(frames, frameDur) {
+App.aggregateNotes = function (frames, frameDur) {
     const spb = 60 / App.bpm;
     const noteGroups = [];
     let current = null;
@@ -130,8 +145,8 @@ App.aggregateNotes = function(frames, frameDur) {
         }
 
         if (current) {
-            // Fuzzy match: +/- 1 semitone tolerance
-            if (Math.abs(midi - current.avgMidi) <= 1) {
+            // Tighter match: +/- 0.5 semitone to avoid merging distinct notes (like semitones)
+            if (Math.abs(midi - current.avgMidi) < 0.5) {
                 current.endIndex = i;
                 const count = (current.endIndex - current.startIndex);
                 current.avgMidi = (current.avgMidi * count + midi) / (count + 1);
@@ -149,17 +164,17 @@ App.aggregateNotes = function(frames, frameDur) {
     const mergedGroups = [];
     if (noteGroups.length > 0) {
         mergedGroups.push(noteGroups[0]);
-        
+
         for (let i = 1; i < noteGroups.length; i++) {
             const prev = mergedGroups[mergedGroups.length - 1];
             const curr = noteGroups[i];
-            
+
             const gapFrames = curr.startIndex - prev.endIndex;
             const gapTime = gapFrames * frameDur;
-            
-            // Merge if same pitch AND gap < 0.3s
-            if (Math.abs(Math.round(prev.avgMidi) - Math.round(curr.avgMidi)) <= 1 && gapTime < 0.3) {
-                prev.endIndex = curr.endIndex; 
+
+            // Stricter: Only merge and fill gaps if it's REALLY the same note
+            if (Math.abs(prev.avgMidi - curr.avgMidi) < 0.4 && gapTime < 0.2) {
+                prev.endIndex = curr.endIndex;
             } else {
                 mergedGroups.push(curr);
             }
@@ -176,18 +191,18 @@ App.aggregateNotes = function(frames, frameDur) {
         const dur = endTime - startTime;
         const finalMidi = Math.round(g.avgMidi);
 
-        if (dur > 0.1) { 
+        if (dur > 0.1) {
             const silence = startTime - lastEnd;
             if (silence > 0.1) {
                 let sb = Math.round((silence / spb) * 4) / 4;
                 if (sb >= 0.25) events.push({ midi: null, beats: sb });
             }
-            
+
             let nb = Math.round((dur / spb) * 4) / 4;
             if (nb < 0.25) nb = 0.25;
-            
+
             events.push({ midi: finalMidi, beats: nb });
-            lastEnd = endTime; 
+            lastEnd = endTime;
         }
     });
 
