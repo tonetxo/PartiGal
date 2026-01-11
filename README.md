@@ -4,7 +4,7 @@
 
 PartiGal é unha aplicación híbrida para Android que transforma os teus asubíos en partituras musicais completas. Utilizando a potencia de Google Gemini 3.0, a app non só transcribe a túa melodía, senón que a harmoniza, arranxa e incluso escribe a letra, todo directamente no teu dispositivo.
 
-![PartiGal Screenshot](pantalla.png)
+<img src="pantalla.png" alt="PartiGal Screenshot" width="300" />
 
 ## ✨ Funcionalidades Principais
 
