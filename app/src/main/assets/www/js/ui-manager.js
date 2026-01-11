@@ -152,7 +152,7 @@ App.setupHandlers = function () {
 App.saveCurrentPrompt = function () {
     const prompt = App.dom.composerPrompt ? App.dom.composerPrompt.value.trim() : '';
     if (!prompt) {
-        alert('Escribe un prompt antes de guardarlo.');
+        alert('Escribe un prompt antes de gardalo.');
         return;
     }
 
@@ -164,9 +164,9 @@ App.saveCurrentPrompt = function () {
             if (savedPrompts.length > 20) savedPrompts.pop();
             localStorage.setItem('saved_prompts', JSON.stringify(savedPrompts));
             App.renderPromptLibrary();
-            alert('✅ Prompt guardado.');
+            alert('✅ Prompt gardado.');
         } else {
-            alert('Este prompt ya está guardado.');
+            alert('Este prompt xa está gardado.');
         }
     } catch (e) {
         console.error('Error saving prompt:', e);
@@ -181,7 +181,7 @@ App.renderPromptLibrary = function () {
         const savedPrompts = JSON.parse(localStorage.getItem('saved_prompts') || '[]');
 
         // Clear all options except the first placeholder
-        select.innerHTML = '<option value="">-- Prompts guardados --</option>';
+        select.innerHTML = '<option value="">-- Prompts gardados --</option>';
 
         savedPrompts.forEach((prompt) => {
             const option = document.createElement('option');

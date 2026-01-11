@@ -8,7 +8,7 @@ App.callGemini = async function (prompt) {
     }
 
     if (!App.apiKey || App.apiKey.length < 5) {
-        alert("⚠️ Por favor, introduce una API Key válida en Ajustes.");
+        alert("⚠️ Por favor, introduce unha API Key válida en Axustes.");
         throw new Error("Missing API Key");
     }
 
@@ -33,13 +33,13 @@ App.callGemini = async function (prompt) {
             console.error("API Error:", errorText);
 
             if (response.status === 404) {
-                alert(`Error 404: El modelo "${model}" no está disponible. Usa 'gemini-1.5-flash' o revisa el ID del modelo personalizado.`);
+                alert(`Erro 404: O modelo "${model}" non está dispoñible. Usa 'gemini-1.5-flash' ou revisa o ID do modelo personalizado.`);
             } else if (response.status === 429) {
-                alert("Error 429: Cuota superada. Espera un minuto o cambia a un modelo más ligero como 'gemini-1.5-flash-8b'.");
+                alert("Erro 429: Cota superada. Agarda un minuto ou cambia a un modelo máis lixeiro coma 'gemini-1.5-flash-8b'.");
             } else if (response.status === 403) {
-                alert("Error 403: API Key no válida o sin permisos para este modelo.");
+                alert("Erro 403: API Key non válida ou sen permisos para este modelo.");
             } else {
-                alert(`Error ${response.status}: ${response.statusText}`);
+                alert(`Erro ${response.status}: ${response.statusText}`);
             }
             throw new Error(`API Error ${response.status}`);
         }
@@ -61,7 +61,7 @@ App.callGemini = async function (prompt) {
             return JSON.parse(text);
         } catch (parseError) {
             console.error("JSON inválido de Gemini:", text);
-            throw new Error("La IA devolvió un formato inesperado o mal formado. Inténtalo de nuevo.");
+            throw new Error("A IA devolveu un formato inesperado ou mal formado. Inténtao de novo.");
         }
 
     } catch (e) {
@@ -82,14 +82,14 @@ App.testConnection = async function () {
 
         if (data.models) {
             const names = data.models.map(m => m.name.replace('models/', '')).filter(n => n.includes('gemini'));
-            alert(`✅ Conexión Exitosa.\n\nModelos disponibles:\n${names.join('\n')}`);
+            alert(`✅ Conexión Exitosa.\n\nModelos dispoñibles:\n${names.join('\n')}`);
             console.log("Available Models:", names);
         } else {
-            alert("⚠️ Conexión establecida pero no se encontraron modelos. ¿Tu API Key tiene permisos?");
+            alert("⚠️ Conexión establecida pero non se atoparon modelos. ¿A túa API Key ten permisos?");
             console.error("No models found:", data);
         }
     } catch (e) {
-        alert(`❌ Error de Conexión: ${e.message}`);
+        alert(`❌ Erro de Conexión: ${e.message}`);
     } finally {
         App.dom.aiStatus.classList.add('hidden');
     }
@@ -100,28 +100,28 @@ App.testConnection = async function () {
 App.composeArrangement = async function () {
     console.log("Composing arrangement..."); // Debug log
     if (App.notesData.length === 0) {
-        alert("⚠️ Primero debes grabar o cargar una melodía.");
+        alert("⚠️ Primeiro debes gravar ou cargar unha melodía.");
         return;
     }
 
     const userPrompt = App.dom.composerPrompt.value.trim();
     if (!userPrompt) {
-        alert("Por favor, escribe una descripción para el arreglo (ej: 'Estilo Jazz').");
+        alert("Por favor, escribe unha descrición para o arranxo (ex: 'Estilo Jazz').");
         return;
     }
 
     App.dom.aiStatus.classList.remove('hidden');
-    App.dom.aiStatusText.textContent = "Gemini orquestando...";
+    App.dom.aiStatusText.textContent = "Gemini orquestrando...";
     App.dom.btnCompose.disabled = true;
 
     // Simplify melody for token efficiency
     const seedMelody = App.notesData.map(n => ({ m: n.midi, b: n.beats }));
 
-    const prompt = `Actúa como un compositor y arreglista experto.
+    const prompt = `Actúa como un compositor e arranxista experto.
     
-    Tengo esta melodía semilla (Main Melody): ${JSON.stringify(seedMelody)}
+    Teño esta melodía semente (Main Melody): ${JSON.stringify(seedMelody)}
     
-    TAREA: Crea un arreglo musical completo basado en esta descripción: "${userPrompt}".
+    TAREA: Crea un arranxo musical completo baseado nesta descrición: "${userPrompt}".
     
     REGLAS:
     1. Devuelve un objeto JSON con una lista de "tracks".
@@ -168,7 +168,7 @@ App.composeArrangement = async function () {
                 App.renderScore(simpleNotes);
             }
 
-            alert(`¡Arreglo compuesto!\n\nPistas generadas: ${result.tracks.map(t => t.instrument).join(', ')}.\n\nDale a PLAY para escuchar.`);
+            alert(`¡Arranxo composto!\n\nPistas xeradas: ${result.tracks.map(t => t.instrument).join(', ')}.\n\nDálle a PLAY para escoitar.`);
 
             // Highlight play button
             App.dom.playBtn.classList.add('animate-pulse');
@@ -177,7 +177,7 @@ App.composeArrangement = async function () {
             throw new Error("Formato JSON incorrecto");
         }
     } catch (e) {
-        App.dom.aiStatusText.textContent = "Error al arreglar";
+        App.dom.aiStatusText.textContent = "Erro ao arranxar";
         console.error(e);
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
@@ -196,7 +196,7 @@ App.triggerIAAnalysis = async function () {
 
     const melody = App.notesData.slice(0, 15).map(n => n.midi ? App.midiToName(n.midi).n : "silencio").join(",");
     const prompt = `Actúa como un musicólogo experto. Analiza esta secuencia de notas: ${melody}. 
-    Responde con un JSON exacto: {"titulo": "Un título creativo y corto en español", "genero": "Género musical (ej: Jazz, Folk, Pop)"}`;
+    Responde cun JSON exacto: {"titulo": "Un título creativo e curto en galego", "genero": "Xénero musical (ex: Jazz, Folk, Pop)"}`;
 
     try {
         const data = await App.callGemini(prompt);
@@ -209,7 +209,7 @@ App.triggerIAAnalysis = async function () {
         App.currentGenre = data.genero;
 
     } catch (e) {
-        App.dom.aiStatusText.textContent = "Error IA (ver consola)";
+        App.dom.aiStatusText.textContent = "Erro IA (ver consola)";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 3000);
     } finally {
         if (!App.dom.aiStatusText.textContent.includes("Error")) {
@@ -222,16 +222,16 @@ App.extendMelody = async function () {
     if (App.notesData.length === 0) return;
 
     App.dom.aiStatus.classList.remove('hidden');
-    App.dom.aiStatusText.textContent = "Gemini componiendo...";
+    App.dom.aiStatusText.textContent = "Gemini compoñendo...";
     App.dom.btnExtend.disabled = true;
 
     const contextNotes = App.notesData.slice(-10);
     const prompt = `Eres un compositor experto. Continúa la siguiente melodía (formato JSON array de objetos {midi, beats}).
     
     Contexto (últimas notas): ${JSON.stringify(contextNotes)}
-    Estilo deseado: ${App.currentGenre}.
+    Estilo desexado: ${App.currentGenre}.
     
-    TAREA: Genera 8 a 12 notas nuevas que sigan el flujo musical de forma natural.
+    TAREA: Xera de 8 a 12 notas novas que sigan o fluxo musical de forma natural.
     REGLAS:
     1. Devuelve SOLO un JSON Array válido: [{"midi": 60, "beats": 1}, ...].
     2. 'midi' debe ser un entero entre 50 y 90.
@@ -247,7 +247,7 @@ App.extendMelody = async function () {
             App.dom.scoreOutput.scrollLeft = App.dom.scoreOutput.scrollWidth;
         }
     } catch (e) {
-        App.dom.aiStatusText.textContent = "Error al componer";
+        App.dom.aiStatusText.textContent = "Erro ao compoñer";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
         if (!App.dom.aiStatusText.textContent.includes("Error")) {
@@ -261,13 +261,13 @@ App.generateVariation = async function () {
     if (App.notesData.length === 0) return;
 
     App.dom.aiStatus.classList.remove('hidden');
-    App.dom.aiStatusText.textContent = "Gemini reimaginando...";
+    App.dom.aiStatusText.textContent = "Gemini reimaxinando...";
     App.dom.btnVariation.disabled = true;
 
-    const prompt = `Eres un arreglista musical experto. Toma esta melodía completa: ${JSON.stringify(App.notesData)} y reescríbela ligeramente para cambiar su estilo.
+    const prompt = `Eres un arranxista musical experto. Toma esta melodía completa: ${JSON.stringify(App.notesData)} e reescríbea lixeiramente para cambiar o seu estilo.
     
-    Elige un estilo al azar (Jazz, Barroco, Minimalista, etc) y adapta el ritmo y las notas.
-    Mantén la duración total aproximada.
+    Escolle un estilo ao chou (Jazz, Barroco, Minimalista, etc) e adapta o ritmo e as notas.
+    Mantén a duración total aproximada.
     
     REGLAS:
     1. Devuelve SOLO un JSON Array válido: [{"midi": 60, "beats": 1}, ...].
@@ -281,7 +281,7 @@ App.generateVariation = async function () {
             App.renderScore(App.notesData);
         }
     } catch (e) {
-        App.dom.aiStatusText.textContent = "Error al variar";
+        App.dom.aiStatusText.textContent = "Erro ao variar";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
         if (!App.dom.aiStatusText.textContent.includes("Error")) {
@@ -293,25 +293,25 @@ App.generateVariation = async function () {
 
 App.analyzePerformance = async function () {
     App.dom.aiStatus.classList.remove('hidden');
-    App.dom.aiStatusText.textContent = "El profesor está escuchando...";
+    App.dom.aiStatusText.textContent = "O profesor está escoitando...";
     App.dom.btnCritique.disabled = true;
 
-    const prompt = `Actúa como un profesor de música de conservatorio amable pero exigente. Analiza esta secuencia de notas: ${JSON.stringify(App.notesData)}.
+    const prompt = `Actúa como un profesor de música de conservatorio amable pero esixente. Analiza esta secuencia de notas: ${JSON.stringify(App.notesData)}.
     
-    Dame una evaluación en español de máximo 40 palabras.
+    Dáme unha avaliación en galego de máximo 40 palabras.
     Comenta sobre:
-    1. Variedad rítmica.
+    1. Variedade rítmica.
     2. Rango tonal.
-    3. Una sugerencia constructiva.
+    3. Unha suxestión constructiva.
     
-    Devuelve un JSON exacto: {"critique": "Tu texto aquí..."}`;
+    Devolve un JSON exacto: {"critique": "O teu texto aquí..."}`;
 
     try {
         const data = await App.callGemini(prompt);
         App.dom.critiqueCard.classList.remove('hidden');
-        App.dom.aiCritiqueContent.textContent = data.critique || data.text || "Sin crítica disponible.";
+        App.dom.aiCritiqueContent.textContent = data.critique || data.text || "Sen crítica dispoñible.";
     } catch (e) {
-        App.dom.aiStatusText.textContent = "Error al analizar";
+        App.dom.aiStatusText.textContent = "Erro ao analizar";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
         if (!App.dom.aiStatusText.textContent.includes("Error")) {
@@ -323,20 +323,20 @@ App.analyzePerformance = async function () {
 
 App.generateLyrics = async function () {
     App.dom.aiStatus.classList.remove('hidden');
-    App.dom.aiStatusText.textContent = "Gemini escribiendo letra...";
+    App.dom.aiStatusText.textContent = "Gemini escribindo letra...";
     App.dom.btnLyrics.disabled = true;
 
-    const prompt = `Eres un letrista de canciones profesional. Escribe una estrofa corta (4 líneas) en español para una canción titulada "${App.currentTitle}" del género "${App.currentGenre}".
+    const prompt = `Eres un letrista de cancións profesional. Escribe unha estrofa curta (4 liñas) en galego para unha canción titulada "${App.currentTitle}" do xénero "${App.currentGenre}".
     
     La letra debe encajar rítmicamente con una melodía alegre/melancólica según el título.
-    Devuelve un JSON exacto: {"lyrics": "línea 1\nlínea 2\nlínea 3\nlínea 4"}`;
+    Devolve un JSON exacto: {"lyrics": "liña 1\nliña 2\nliña 3\nliña 4"}`;
 
     try {
         const data = await App.callGemini(prompt);
         App.dom.lyricsCard.classList.remove('hidden');
-        App.dom.aiLyricsContent.textContent = data.lyrics || "Error generando letra.";
+        App.dom.aiLyricsContent.textContent = data.lyrics || "Erro xerando letra.";
     } catch (e) {
-        App.dom.aiStatusText.textContent = "Error al escribir letra";
+        App.dom.aiStatusText.textContent = "Erro ao escribir letra";
         setTimeout(() => App.dom.aiStatus.classList.add('hidden'), 2000);
     } finally {
         if (!App.dom.aiStatusText.textContent.includes("Error")) {
@@ -352,12 +352,12 @@ App.generateOfflineResponse = function (prompt) {
     const p = prompt.toLowerCase();
 
     // 1. ARRANGEMENT (SATB 4 Voices)
-    if (p.includes("crea un arreglo") || p.includes("tracks")) {
+    if (p.includes("arranxo") || p.includes("tracks")) {
         const tracks = [
             { instrument: "Soprano (Melodía)", interval: 0 },
             { instrument: "Contralto", interval: -4 }, // approx major third down
             { instrument: "Tenor", interval: -7 },    // fifth down
-            { instrument: "Bajo", interval: -12 }      // octave down
+            { instrument: "Baixo", interval: -12 }      // octave down
         ];
 
         return {
@@ -382,7 +382,7 @@ App.generateOfflineResponse = function (prompt) {
     if (p.includes("analiza esta secuencia") || p.includes("musicólogo")) {
         return {
             titulo: "Melodía Algorítmica",
-            genero: "Ejercicio Coral"
+            genero: "Exercicio Coral"
         };
     }
 
@@ -406,10 +406,10 @@ App.generateOfflineResponse = function (prompt) {
     // 5. LYRICS
     if (p.includes("letrista") || p.includes("estrofa")) {
         return {
-            lyrics: "En el silencio de la noche,\nla melodía empieza a sonar.\nSin cables ni conexiones,\nla música vuelve a brillar."
+            lyrics: "No silencio da noite,\na melodía comeza a soar.\nSen cables nin conexións,\na música volve a brillar."
         };
     }
 
     // Default Fallback
-    return { text: "Modo Offline Activo. No hay conexión con la API." };
+    return { text: "Modo Offline Activo. Non hai conexión coa API." };
 };

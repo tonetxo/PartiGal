@@ -37,7 +37,7 @@ App.handleFile = async function (file) {
         App.processAndRender(buffer, 'file');
     } catch (e) {
         console.error(e);
-        alert("Error procesando el audio.");
+        alert("Erro procesando o audio.");
     }
 };
 
@@ -45,7 +45,7 @@ App.processAndRender = async function (buffer, sourceType) {
     if (App.isPlaying) App.stopAudio();
 
     App.dom.aiStatus.classList.remove('hidden');
-    App.dom.aiStatusText.textContent = sourceType === 'mic' ? "Filtrando y analizando..." : "Procesando archivo...";
+    App.dom.aiStatusText.textContent = sourceType === 'mic' ? "Filtrando e analizando..." : "Procesando arquivo...";
 
     App.dom.lyricsCard.classList.add('hidden');
     App.dom.critiqueCard.classList.add('hidden');
@@ -53,8 +53,8 @@ App.processAndRender = async function (buffer, sourceType) {
 
     // Reset AI state
     App.arrangementData = null;
-    App.currentTitle = "Sin título";
-    App.currentGenre = "Desconocido";
+    App.currentTitle = "Sen título";
+    App.currentGenre = "Descoñecido";
 
     // Give UI a moment to update
     setTimeout(async () => {
@@ -67,14 +67,14 @@ App.processAndRender = async function (buffer, sourceType) {
                 App.triggerIAAnalysis();
             } else {
                 const msg = sourceType === 'mic'
-                    ? "No se detectaron notas claras. Intenta silbar más fuerte."
-                    : "El archivo parece vacío o demasiado silencioso.";
+                    ? "Non se detectaron notas claras. Intenta silvar máis forte."
+                    : "O arquivo parece baleiro ou demasiado silencioso.";
                 alert(msg);
                 App.dom.aiStatus.classList.add('hidden');
             }
         } catch (e) {
             console.error("Error processing audio:", e);
-            alert("Error al procesar el audio.");
+            alert("Erro ao procesar o audio.");
             App.dom.aiStatus.classList.add('hidden');
         }
     }, 50);
@@ -109,7 +109,7 @@ App.toggleRecording = async function () {
                 App.dom.recordingStateContent.classList.add('hidden');
                 App.dom.dropZone.classList.remove('recording-box');
                 App.dom.recordBtn.classList.remove('recording-btn-active');
-                App.dom.recordText.textContent = "Grabar Silbido";
+                App.dom.recordText.textContent = "Gravar Silvido";
                 App.dom.recordIcon.textContent = "🎤";
 
                 if (App.dom.micLevelBar) App.dom.micLevelBar.style.width = '0%';
@@ -121,11 +121,11 @@ App.toggleRecording = async function () {
                     const buffer = await App.audioCtx.decodeAudioData(arrayBuffer);
                     App.lastBuffer = buffer;
                     App.lastSourceType = 'mic';
-                    App.dom.fileLabel.textContent = "Grabación de micrófono";
+                    App.dom.fileLabel.textContent = "Gravación de micrófono";
                     App.processAndRender(buffer, 'mic');
                 } catch (e) {
                     console.error(e);
-                    alert("Error procesando audio. ¿Estaba muy bajo?");
+                    alert("Erro procesando o audio. ¿Estaba moi baixo?");
                 }
 
                 stream.getTracks().forEach(track => track.stop());
@@ -139,13 +139,13 @@ App.toggleRecording = async function () {
             App.dom.recordingStateContent.classList.remove('hidden');
             App.dom.dropZone.classList.add('recording-box');
             App.dom.recordBtn.classList.add('recording-btn-active');
-            App.dom.recordText.textContent = "Detener";
+            App.dom.recordText.textContent = "Deter";
             App.dom.recordIcon.textContent = "⏹️";
 
         } catch (err) {
             console.error("Error micrófono:", err);
             App.isRecording = false;
-            alert("No se pudo iniciar la grabación. Verifica los permisos del micrófono.");
+            alert("Non se puido iniciar a gravación. Verifica os permisos do micrófono.");
         }
     } else {
         if (App.mediaRecorder && App.mediaRecorder.state !== 'inactive') {
@@ -308,32 +308,36 @@ App.playAudio = function () {
 
 App.stopAudio = function () {
     const now = Tone.now();
+    const fadeOutTime = 0.2; // 200ms - SLOWER fade to be safe
 
-    // 1. Ramp down master gain FIRST to avoid click
-    if (App.masterGain) {
-        App.masterGain.gain.rampTo(0, 0.05, now);
+    // 1. Prioritize SILENCE: Linear fade to 0
+    if (App.masterGain && App.masterGain.gain) {
+        App.masterGain.gain.cancelScheduledValues(now);
+        App.masterGain.gain.setValueAtTime(App.masterGain.gain.value, now);
+        App.masterGain.gain.linearRampToValueAtTime(0, now + fadeOutTime);
     }
 
-    // 2. Release all synths with a small fade
-    if (App.currentSynth) App.currentSynth.releaseAll(0.1);
-    App.synthCache.forEach(synth => {
-        if (synth.releaseAll) synth.releaseAll(0.1);
-        else if (synth.triggerRelease) synth.triggerRelease(now + 0.05);
-    });
+    // 2. WAIT for Silence (Disconnect logic caused clicks, so we trust the ramp)
+    // We do NOT stop Transport immediately to avoid cutting off release tails or triggering race conditions
 
-    // 3. Wait for the fade to complete before stopping the transport
     setTimeout(() => {
+        // 3. NOW it is safe to kill everything
         Tone.Transport.stop();
         Tone.Transport.cancel();
 
-        // Reset gain for internal state (though playAudio will ramp it again)
-        if (App.masterGain) App.masterGain.gain.setValueAtTime(0.7, Tone.now());
+        if (App.currentSynth) App.currentSynth.releaseAll();
+        App.synthCache.forEach(synth => {
+            if (synth.releaseAll) synth.releaseAll();
+        });
 
         App.isPlaying = false;
+
+        // IMPORTANT: Leave Gain at 0. PlayAudio will ramp it up.
+
         if (App.dom.playBtn) {
             App.dom.playBtn.innerHTML = '▶ Play';
         }
-    }, 100);
+    }, (fadeOutTime * 1000) + 50); // 250ms total wait
 };
 
 App.beatsToMidiDuration = function (b) {
@@ -445,7 +449,7 @@ App.saveMidi = function () {
             write.tracks.push(processNotesToTrack(t.notes, t.instrument));
         });
     } else {
-        write.tracks.push(processNotesToTrack(App.notesData, "Melody"));
+        write.tracks.push(processNotesToTrack(App.notesData, "Melodía"));
     }
 
     const base64 = write.dataUri();
