@@ -67,7 +67,7 @@ App.processAndRender = async function (buffer, sourceType) {
                 App.triggerIAAnalysis();
             } else {
                 const msg = sourceType === 'mic'
-                    ? "Non se detectaron notas claras. Intenta silvar máis forte."
+                    ? "Non se detectaron notas claras. Intenta asubiar máis forte."
                     : "O arquivo parece baleiro ou demasiado silencioso.";
                 alert(msg);
                 App.dom.aiStatus.classList.add('hidden');
@@ -109,7 +109,7 @@ App.toggleRecording = async function () {
                 App.dom.recordingStateContent.classList.add('hidden');
                 App.dom.dropZone.classList.remove('recording-box');
                 App.dom.recordBtn.classList.remove('recording-btn-active');
-                App.dom.recordText.textContent = "Gravar Silvido";
+                App.dom.recordText.textContent = "Gravar Asubío";
                 App.dom.recordIcon.textContent = "🎤";
 
                 if (App.dom.micLevelBar) App.dom.micLevelBar.style.width = '0%';
