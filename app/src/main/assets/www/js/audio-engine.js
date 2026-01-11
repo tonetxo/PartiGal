@@ -1,11 +1,24 @@
 // Audio Engine: Recording, Playback, and File Handling
 
 App.initAudio = function () {
-    // Basic synth for simple melody playback
+    // Master Output Chain: Compressor -> Limiter -> Master Gain -> Destination
+    App.masterLimiter = new Tone.Limiter(-1).toDestination();
+    App.masterCompressor = new Tone.Compressor({
+        threshold: -20,
+        ratio: 3,
+        attack: 0.01,
+        release: 0.1
+    }).connect(App.masterLimiter);
+
+    App.masterGain = new Tone.Gain(0.7).connect(App.masterCompressor);
+
+    // Basic synth for simple melody playback (Smooth envelope)
     App.currentSynth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: 'sine' },
-        envelope: { attack: 0.1, release: 1.2 }
-    }).toDestination();
+        envelope: { attack: 0.05, decay: 0.1, sustain: 0.5, release: 1.2 }
+    }).connect(App.masterGain);
+
+    App.currentSynth.volume.value = -8;
 
     // Cache for arrangement instruments
     App.synthCache = new Map();
@@ -29,12 +42,19 @@ App.handleFile = async function (file) {
 };
 
 App.processAndRender = async function (buffer, sourceType) {
+    if (App.isPlaying) App.stopAudio();
+
     App.dom.aiStatus.classList.remove('hidden');
     App.dom.aiStatusText.textContent = sourceType === 'mic' ? "Filtrando y analizando..." : "Procesando archivo...";
 
     App.dom.lyricsCard.classList.add('hidden');
     App.dom.critiqueCard.classList.add('hidden');
     App.dom.aiPanel.classList.add('hidden');
+
+    // Reset AI state
+    App.arrangementData = null;
+    App.currentTitle = "Sin título";
+    App.currentGenre = "Desconocido";
 
     // Give UI a moment to update
     setTimeout(async () => {
@@ -174,9 +194,25 @@ App.visualizeVolume = function (analyser) {
 };
 
 App.playAudio = function () {
+    // Toggle behavior: if playing, stop
+    if (App.isPlaying) {
+        App.stopAudio();
+        return;
+    }
+
     Tone.start();
     const now = Tone.now();
+
+    // Ramp up master gain to avoid click at start
+    App.masterGain.gain.setValueAtTime(0, now);
+    App.masterGain.gain.rampTo(0.7, 0.05, now);
+
+    Tone.Transport.cancel(); // Clear any previous scheduled events
+    Tone.Transport.stop();
+    Tone.Transport.position = 0;
+
     const spb = 60 / App.bpm;
+    Tone.Transport.bpm.value = App.bpm;
 
     // Check if we have a complex arrangement
     if (App.arrangementData && App.arrangementData.tracks) {
@@ -188,26 +224,38 @@ App.playAudio = function () {
             if (!synth) {
                 // Create and cache synth if it doesn't exist
                 if (name.includes('drum') || name.includes('perc')) {
-                    synth = new Tone.MembraneSynth().toDestination();
+                    synth = new Tone.MembraneSynth({
+                        envelope: { attack: 0.01, decay: 0.2, sustain: 0 }
+                    }).connect(App.masterGain);
+                    synth.volume.value = -10;
                 } else if (name.includes('bass')) {
-                    synth = new Tone.MonoSynth({ oscillator: { type: 'square' } }).toDestination();
+                    synth = new Tone.MonoSynth({
+                        oscillator: { type: 'square' },
+                        envelope: { attack: 0.05, decay: 0.2, sustain: 0.4, release: 0.6 }
+                    }).connect(App.masterGain);
+                    synth.volume.value = -12;
                 } else {
-                    synth = new Tone.PolySynth(Tone.Synth).toDestination();
+                    synth = new Tone.PolySynth(Tone.Synth, {
+                        envelope: { attack: 0.05, decay: 0.1, sustain: 0.6, release: 1 }
+                    }).connect(App.masterGain);
+                    synth.volume.value = -10;
                 }
                 App.synthCache.set(name, synth);
             }
 
-            // Schedule notes
+            // Schedule notes using Transport
             track.notes.forEach(note => {
                 if (note.midi) {
-                    // Use startTime if available (polyphonic), else accumulate (monophonic fallback)
-                    const time = (note.startTime !== undefined) ? (note.startTime * spb) : 0; // Fallback 0 if logic fails
+                    const startTime = (note.startTime !== undefined) ? note.startTime : 0;
+                    const duration = note.beats * spb * 0.9;
 
-                    synth.triggerAttackRelease(
-                        Tone.Frequency(note.midi, "midi").toFrequency(),
-                        note.beats * spb * 0.9,
-                        now + time
-                    );
+                    Tone.Transport.schedule((time) => {
+                        synth.triggerAttackRelease(
+                            Tone.Frequency(note.midi, "midi").toFrequency(),
+                            duration,
+                            time
+                        );
+                    }, startTime * spb);
                 }
             });
         });
@@ -217,15 +265,75 @@ App.playAudio = function () {
         let t = 0;
         App.notesData.forEach(ev => {
             if (ev.midi) {
-                App.currentSynth.triggerAttackRelease(
-                    Tone.Frequency(ev.midi, "midi").toFrequency(),
-                    ev.beats * spb * 0.9,
-                    now + t
-                );
+                const duration = ev.beats * spb * 0.9;
+                Tone.Transport.schedule((time) => {
+                    App.currentSynth.triggerAttackRelease(
+                        Tone.Frequency(ev.midi, "midi").toFrequency(),
+                        duration,
+                        time
+                    );
+                }, t);
             }
             t += ev.beats * spb;
         });
     }
+
+    // Calculate total duration and schedule stop
+    let totalDuration = 0;
+    if (App.arrangementData && App.arrangementData.tracks) {
+        App.arrangementData.tracks.forEach(track => {
+            track.notes.forEach(note => {
+                const endTime = ((note.startTime || 0) + (note.beats || 1)) * spb;
+                if (endTime > totalDuration) totalDuration = endTime;
+            });
+        });
+    } else {
+        App.notesData.forEach(ev => totalDuration += ev.beats * spb);
+    }
+
+    // Auto-stop when finished
+    Tone.Transport.schedule(() => {
+        App.stopAudio();
+    }, totalDuration + 0.5);
+
+    // Start playback
+    Tone.Transport.start();
+    App.isPlaying = true;
+
+    // Update UI
+    if (App.dom.playBtn) {
+        App.dom.playBtn.innerHTML = '⏹ Stop';
+    }
+};
+
+App.stopAudio = function () {
+    const now = Tone.now();
+
+    // 1. Ramp down master gain FIRST to avoid click
+    if (App.masterGain) {
+        App.masterGain.gain.rampTo(0, 0.05, now);
+    }
+
+    // 2. Release all synths with a small fade
+    if (App.currentSynth) App.currentSynth.releaseAll(0.1);
+    App.synthCache.forEach(synth => {
+        if (synth.releaseAll) synth.releaseAll(0.1);
+        else if (synth.triggerRelease) synth.triggerRelease(now + 0.05);
+    });
+
+    // 3. Wait for the fade to complete before stopping the transport
+    setTimeout(() => {
+        Tone.Transport.stop();
+        Tone.Transport.cancel();
+
+        // Reset gain for internal state (though playAudio will ramp it again)
+        if (App.masterGain) App.masterGain.gain.setValueAtTime(0.7, Tone.now());
+
+        App.isPlaying = false;
+        if (App.dom.playBtn) {
+            App.dom.playBtn.innerHTML = '▶ Play';
+        }
+    }, 100);
 };
 
 App.beatsToMidiDuration = function (b) {
@@ -236,11 +344,6 @@ App.beatsToMidiDuration = function (b) {
     return '16';
 };
 
-// Consolidating duration helpers (Wait for full refactor if needed)
-App.vexToBeats = function (code) {
-    const map = { '1': 4, '2': 2, '4': 1, '8': 0.5, '16': 0.25 };
-    return map[code] || 1;
-};
 
 App.saveMidi = function () {
     const write = new MidiWriter.Writer([]);
@@ -331,9 +434,6 @@ App.saveMidi = function () {
                 // We are at T. Write Note(dur=1). We are at T+1.
                 // Next target is T+2. Wait(1).
 
-                const durationBeats = App.vexToBeats(maxDuration); // Need reverse helper? Or just store beats.
-                // Simplified:
-                lastTime = t + notesAtTime[0].beats;
             });
         }
 
@@ -351,14 +451,10 @@ App.saveMidi = function () {
     const base64 = write.dataUri();
     const fileName = `AudioScore-${App.currentTitle.replace(/\s+/g, '-')}.mid`;
 
-    console.log("Attempting to save MIDI:", fileName); // DEBUG LOG
-
     if (window.AndroidInterface && window.AndroidInterface.saveFile) {
-        console.log("Native Bridge Found. Calling saveFile..."); // DEBUG LOG
         // Native Save
         window.AndroidInterface.saveFile(base64, fileName);
     } else {
-        console.log("Native Bridge NOT found. Using fallback."); // DEBUG LOG
         // Fallback for desktop browser debugging
         const link = document.createElement('a');
         link.href = base64;

@@ -1,6 +1,12 @@
 // Gemini AI Integration (Direct API Key)
 
 App.callGemini = async function (prompt) {
+    // OFFLINE MODE FALLBACK
+    if (App.isOffline) {
+        console.log("Offline Mode Active: Generating mock response...");
+        return App.generateOfflineResponse(prompt);
+    }
+
     if (!App.apiKey || App.apiKey.length < 5) {
         alert("⚠️ Por favor, introduce una API Key válida en Ajustes.");
         throw new Error("Missing API Key");
@@ -51,7 +57,12 @@ App.callGemini = async function (prompt) {
         let text = candidate.content.parts[0].text;
         text = text.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
 
-        return JSON.parse(text);
+        try {
+            return JSON.parse(text);
+        } catch (parseError) {
+            console.error("JSON inválido de Gemini:", text);
+            throw new Error("La IA devolvió un formato inesperado o mal formado. Inténtalo de nuevo.");
+        }
 
     } catch (e) {
         console.error("Gemini Logic Error:", e);
@@ -134,6 +145,29 @@ App.composeArrangement = async function () {
 
         if (result && result.tracks) {
             App.arrangementData = result;
+
+            // Extract melody track for score rendering (first track or one named 'melody'/'piano')
+            const melodyTrack = result.tracks.find(t =>
+                t.instrument.toLowerCase().includes('melody') ||
+                t.instrument.toLowerCase().includes('piano') ||
+                t.instrument.toLowerCase().includes('melodía')
+            ) || result.tracks[0];
+
+            if (melodyTrack && melodyTrack.notes) {
+                // Convert arrangement format to simple notesData format for score rendering
+                // Sort by startTime to get sequential order
+                const sortedNotes = [...melodyTrack.notes].sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+
+                // Convert to simple {midi, beats} format
+                const simpleNotes = sortedNotes.map(n => ({
+                    midi: n.midi,
+                    beats: n.beats || 1
+                }));
+
+                App.notesData = simpleNotes;
+                App.renderScore(simpleNotes);
+            }
+
             alert(`¡Arreglo compuesto!\n\nPistas generadas: ${result.tracks.map(t => t.instrument).join(', ')}.\n\nDale a PLAY para escuchar.`);
 
             // Highlight play button
@@ -310,4 +344,72 @@ App.generateLyrics = async function () {
         }
         App.dom.btnLyrics.disabled = false;
     }
+};
+
+// --- Offline Mode Helpers ---
+
+App.generateOfflineResponse = function (prompt) {
+    const p = prompt.toLowerCase();
+
+    // 1. ARRANGEMENT (SATB 4 Voices)
+    if (p.includes("crea un arreglo") || p.includes("tracks")) {
+        const tracks = [
+            { instrument: "Soprano (Melodía)", interval: 0 },
+            { instrument: "Contralto", interval: -4 }, // approx major third down
+            { instrument: "Tenor", interval: -7 },    // fifth down
+            { instrument: "Bajo", interval: -12 }      // octave down
+        ];
+
+        return {
+            tracks: tracks.map(t => ({
+                instrument: t.instrument,
+                notes: App.notesData.map((n, i) => {
+                    // Accumulate beats for startTime
+                    let startTime = 0;
+                    for (let j = 0; j < i; j++) startTime += App.notesData[j].beats;
+
+                    return {
+                        midi: n.midi ? (n.midi + t.interval) : null,
+                        beats: n.beats,
+                        startTime: startTime
+                    };
+                }).filter(n => n.midi !== null)
+            }))
+        };
+    }
+
+    // 2. ANALYSIS
+    if (p.includes("analiza esta secuencia") || p.includes("musicólogo")) {
+        return {
+            titulo: "Melodía Algorítmica",
+            genero: "Ejercicio Coral"
+        };
+    }
+
+    // 3. VARIATION
+    if (p.includes("variación") || p.includes("reescríbela")) {
+        return App.notesData.map(n => ({
+            midi: n.midi ? (n.midi + (Math.random() > 0.5 ? 2 : -2)) : null,
+            beats: n.beats
+        })).filter(n => n.midi !== null);
+    }
+
+    // 4. EXTEND
+    if (p.includes("continúa") || p.includes("notas nuevas")) {
+        const lastMidi = App.notesData[App.notesData.length - 1]?.midi || 60;
+        return Array.from({ length: 8 }, () => ({
+            midi: lastMidi + Math.floor(Math.random() * 5 - 2),
+            beats: 0.5
+        }));
+    }
+
+    // 5. LYRICS
+    if (p.includes("letrista") || p.includes("estrofa")) {
+        return {
+            lyrics: "En el silencio de la noche,\nla melodía empieza a sonar.\nSin cables ni conexiones,\nla música vuelve a brillar."
+        };
+    }
+
+    // Default Fallback
+    return { text: "Modo Offline Activo. No hay conexión con la API." };
 };

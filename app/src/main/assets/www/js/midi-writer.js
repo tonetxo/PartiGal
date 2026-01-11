@@ -1,10 +1,16 @@
 // Simple MIDI Writer (Embedded)
 // Covers: Track, NoteEvent, WaitEvent, ProgramChangeEvent, Writer.dataUri
 
-(function(root) {
-    
+(function (root) {
+
     function stringToBytes(str) {
         return str.split('').map(c => c.charCodeAt(0));
+    }
+
+    function durationToTicks(d) {
+        // 128 ticks per quarter note (4)
+        const map = { '1': 512, '2': 256, '4': 128, '8': 64, '16': 32 };
+        return map[d] || 128;
     }
 
     function numberToBytes(number, bytes) {
@@ -19,7 +25,7 @@
         let buffer = [];
         let value = number;
         if (value > 0x0FFFFFFF) throw new Error("Var length too big");
-        
+
         let i = value & 0x7F;
         while ((value >>= 7)) {
             i <<= 8;
@@ -44,7 +50,7 @@
             this.events.forEach(e => trackData.push(...e.toBytes()));
             // End of Track
             trackData.push(0x00, 0xFF, 0x2F, 0x00);
-            
+
             let head = stringToBytes("MTrk");
             let len = numberToBytes(trackData.length, 4);
             return [...head, ...len, ...trackData];
@@ -63,10 +69,10 @@
                 ...numberToBytes(this.tracks.length, 2),
                 ...numberToBytes(128, 2) // Ticks per beat
             ];
-            
+
             let data = [...header];
             this.tracks.forEach(t => data.push(...t.toBytes()));
-            
+
             let binary = "";
             let bytes = new Uint8Array(data);
             for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
@@ -82,15 +88,15 @@
             this.velocity = 100;
         }
         toBytes() {
-            let durTicks = this.getTicks(this.duration);
+            let durTicks = durationToTicks(this.duration);
             let bytes = [];
-            
+
             // Note On
             this.pitch.forEach(p => {
                 let midi = this.noteToMidi(p);
                 bytes.push(0x00, 0x90, midi, this.velocity); // Delta 0
             });
-            
+
             // Note Off (Wait for duration)
             this.pitch.forEach((p, i) => {
                 let midi = this.noteToMidi(p);
@@ -98,25 +104,17 @@
                 let delta = (i === 0) ? variableLength(durTicks) : [0x00];
                 bytes.push(...delta, 0x80, midi, 0x40);
             });
-            
+
             return bytes;
         }
-        getTicks(d) {
-            // 128 ticks per quarter note (4)
-            if(d === '1') return 128 * 4;
-            if(d === '2') return 128 * 2;
-            if(d === '4') return 128;
-            if(d === '8') return 64;
-            if(d === '16') return 32;
-            return 128;
-        }
+
         noteToMidi(n) {
             // "C#4"
             let note = n.slice(0, -1);
             let oct = parseInt(n.slice(-1));
-            const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+            const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
             let idx = notes.indexOf(note);
-            if(idx === -1) idx = notes.indexOf(note.replace('H','')); // Typo fix
+            if (idx === -1) idx = notes.indexOf(note.replace('H', '')); // Typo fix
             return (oct + 1) * 12 + idx;
         }
     }
@@ -127,27 +125,9 @@
         }
         toBytes() {
             // A wait event in MIDI is just a delta time before the NEXT event.
-            // But MidiWriterJS treats it as an event?
-            // Actually, in standard MIDI, you can't have a "Wait" event standalone.
-            // You wait *before* an event.
-            // This simplifier creates a dummy event? Or we just handle it differently.
-            // Ideally we insert 0 ticks.
-            // But to keep API compat with MidiWriterJS, we'll return empty bytes here
-            // AND we need to hack the Writer to handle accumulated wait.
-            // BUT, since we are rewriting, let's make NoteEvent handle its own delta?
-            // No, the caller code (audio-engine) expects WaitEvent to work.
-            
-            // Hack: Insert a dummy Controller change to consume time?
-            let ticks = this.getTicks(this.duration);
+            // Using a dummy CC to consume time in this simplified implementation.
+            let ticks = durationToTicks(this.duration);
             return [...variableLength(ticks), 0xB0, 123, 0]; // CC All Notes Off (safe dummy)
-        }
-        getTicks(d) {
-            if(d === '1') return 128 * 4;
-            if(d === '2') return 128 * 2;
-            if(d === '4') return 128;
-            if(d === '8') return 64;
-            if(d === '16') return 32;
-            return 128;
         }
     }
 

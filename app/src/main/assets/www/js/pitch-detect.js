@@ -57,16 +57,18 @@ App.processWhistle = async function (rawBuffer, sourceType) {
     }
 
     const sr = filteredBuffer.sampleRate;
-    const step = 512, win = 2048, frames = [];
+    const ANALYSIS_STEP = 512;
+    const ANALYSIS_WINDOW = 2048;
+    const frames = [];
 
     // Thresholds optimized for FILTERED audio
     // We can be slightly stricter now that noise is gone to avoid false positives
     const silenceThresh = 0.01; // More sensitivity for weak whistles
     const yinTolerance = 0.25; // Balanced tolerance
 
-    for (let i = 0; i < data.length; i += step) {
-        const chunk = data.slice(i, i + win);
-        if (chunk.length < win) break;
+    for (let i = 0; i < data.length; i += ANALYSIS_STEP) {
+        const chunk = data.slice(i, i + ANALYSIS_WINDOW);
+        if (chunk.length < ANALYSIS_WINDOW) break;
         const freq = App.getYin(chunk, sr, silenceThresh, yinTolerance);
         // Do not round here! Aggregate with float for better precision
         frames.push(freq > 0 ? (69 + 12 * Math.log2(freq / 440)) : null);
@@ -89,7 +91,7 @@ App.processWhistle = async function (rawBuffer, sourceType) {
         }
     }
 
-    return App.aggregateNotes(filteredFrames, step / sr);
+    return App.aggregateNotes(filteredFrames, ANALYSIS_STEP / sr);
 };
 
 App.getYin = function (buf, sr, thresh, tolerance) {
@@ -185,13 +187,17 @@ App.aggregateNotes = function (frames, frameDur) {
     const events = [];
     let lastEnd = 0;
 
+    // Use mergeThreshold (1-12) to filter out short blips
+    // Default is 6, we'll map it to a duration threshold (0.01 to 0.2 seconds)
+    const minNoteDuration = (App.mergeThreshold || 6) * 0.02;
+
     mergedGroups.forEach(g => {
         const startTime = g.startIndex * frameDur;
         const endTime = g.endIndex * frameDur;
         const dur = endTime - startTime;
         const finalMidi = Math.round(g.avgMidi);
 
-        if (dur > 0.1) {
+        if (dur > minNoteDuration) {
             const silence = startTime - lastEnd;
             if (silence > 0.1) {
                 let sb = Math.round((silence / spb) * 4) / 4;

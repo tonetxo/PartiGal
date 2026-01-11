@@ -10,7 +10,8 @@ App.initUI = function () {
         'mic-level-bar', 'upload-state-content', 'recording-state-content',
         'btn-variation', 'btn-critique', 'critique-card', 'ai-critique-content',
         'api-key-input', 'model-select', 'custom-model-input',
-        'composer-prompt', 'btn-compose', 'btn-test-connection'
+        'composer-prompt', 'btn-compose', 'btn-test-connection',
+        'btn-save-prompt', 'prompt-library-select', 'offline-mode-check'
     ];
 
     // Map IDs to App.dom
@@ -40,48 +41,70 @@ App.initUI = function () {
         if (App.dom.customModelInput) App.dom.customModelInput.value = savedCustomModel;
     }
 
+    // Load saved Offline Mode
+    const savedOffline = localStorage.getItem('is_offline');
+    if (savedOffline === 'true') {
+        App.isOffline = true;
+        if (App.dom.offlineModeCheck) App.dom.offlineModeCheck.checked = true;
+    }
+
     App.setupHandlers();
     App.initAudio();
 };
 
 App.setupHandlers = function () {
     // API Key Handler
-    App.dom.apiKeyInput.oninput = (e) => {
-        const key = e.target.value.trim();
-        App.apiKey = key;
-        localStorage.setItem('gemini_api_key', key);
-    };
+    if (App.dom.apiKeyInput) {
+        App.dom.apiKeyInput.oninput = (e) => {
+            const key = e.target.value.trim();
+            App.apiKey = key;
+            localStorage.setItem('gemini_api_key', key);
+        };
+    }
 
-    // Model Selector Handler
-    App.dom.modelSelect.onchange = (e) => {
-        App.currentModel = e.target.value;
-        localStorage.setItem('gemini_model', App.currentModel);
-    };
+    if (App.dom.modelSelect) {
+        App.dom.modelSelect.onchange = (e) => {
+            App.currentModel = e.target.value;
+            localStorage.setItem('gemini_model', App.currentModel);
+        };
+    }
 
-    // Custom Model Input Handler
-    App.dom.customModelInput.oninput = (e) => {
-        App.customModel = e.target.value.trim();
-        localStorage.setItem('gemini_custom_model', App.customModel);
-    };
+    if (App.dom.customModelInput) {
+        App.dom.customModelInput.oninput = (e) => {
+            App.customModel = e.target.value.trim();
+            localStorage.setItem('gemini_custom_model', App.customModel);
+        };
+    }
 
-    App.dom.bpmInput.oninput = (e) => {
-        App.bpm = parseInt(e.target.value);
-        App.dom.bpmVal.textContent = App.bpm + " BPM";
-    };
+    if (App.dom.bpmInput) {
+        App.dom.bpmInput.oninput = (e) => {
+            App.bpm = parseInt(e.target.value, 10);
+            if (App.dom.bpmVal) App.dom.bpmVal.textContent = App.bpm + " BPM";
+        };
+    }
 
-    App.dom.mergeInput.oninput = (e) => {
-        App.mergeThreshold = parseInt(e.target.value);
-    };
+    if (App.dom.mergeInput) {
+        App.dom.mergeInput.oninput = (e) => {
+            App.mergeThreshold = parseInt(e.target.value, 10);
+        };
+    }
 
-    App.dom.themeToggle.onclick = App.toggleTheme;
+    if (App.dom.themeToggle) App.dom.themeToggle.onclick = App.toggleTheme;
 
-    App.dom.btnCompose.onclick = App.composeArrangement;
-    App.dom.btnExtend.onclick = App.extendMelody;
-    App.dom.btnLyrics.onclick = App.generateLyrics;
-    App.dom.btnVariation.onclick = App.generateVariation;
-    App.dom.btnVariation.onclick = App.generateVariation;
-    App.dom.btnCritique.onclick = App.analyzePerformance;
+    if (App.dom.offlineModeCheck) {
+        App.dom.offlineModeCheck.onchange = (e) => {
+            App.isOffline = e.target.checked;
+            localStorage.setItem('is_offline', App.isOffline);
+        };
+    }
+
+    if (App.dom.btnCompose) App.dom.btnCompose.onclick = App.composeArrangement;
+    if (App.dom.btnExtend) App.dom.btnExtend.onclick = App.extendMelody;
+    if (App.dom.btnLyrics) App.dom.btnLyrics.onclick = App.generateLyrics;
+    if (App.dom.btnVariation) App.dom.btnVariation.onclick = App.generateVariation;
+    if (App.dom.btnCritique) App.dom.btnCritique.onclick = App.analyzePerformance;
     if (App.dom.btnTestConnection) App.dom.btnTestConnection.onclick = App.testConnection;
+    if (App.dom.btnSavePrompt) App.dom.btnSavePrompt.onclick = App.saveCurrentPrompt;
 
     App.dom.audioInput.onchange = (e) => App.handleFile(e.target.files[0]);
 
@@ -109,6 +132,67 @@ App.setupHandlers = function () {
         dz.classList.remove('drag-active');
         if (!App.isRecording) App.handleFile(e.dataTransfer.files[0]);
     });
+
+    // Prompt Library Dropdown Handler
+    if (App.dom.promptLibrarySelect) {
+        App.dom.promptLibrarySelect.onchange = (e) => {
+            const selectedPrompt = e.target.value;
+            if (selectedPrompt && App.dom.composerPrompt) {
+                App.dom.composerPrompt.value = selectedPrompt;
+            }
+        };
+    }
+
+    // Load Prompt Library into Dropdown
+    App.renderPromptLibrary();
+};
+
+// --- Prompt Library Functions ---
+
+App.saveCurrentPrompt = function () {
+    const prompt = App.dom.composerPrompt ? App.dom.composerPrompt.value.trim() : '';
+    if (!prompt) {
+        alert('Escribe un prompt antes de guardarlo.');
+        return;
+    }
+
+    try {
+        let savedPrompts = JSON.parse(localStorage.getItem('saved_prompts') || '[]');
+        if (!savedPrompts.includes(prompt)) {
+            savedPrompts.unshift(prompt);
+            // Limit to 20 saved prompts
+            if (savedPrompts.length > 20) savedPrompts.pop();
+            localStorage.setItem('saved_prompts', JSON.stringify(savedPrompts));
+            App.renderPromptLibrary();
+            alert('✅ Prompt guardado.');
+        } else {
+            alert('Este prompt ya está guardado.');
+        }
+    } catch (e) {
+        console.error('Error saving prompt:', e);
+    }
+};
+
+App.renderPromptLibrary = function () {
+    const select = App.dom.promptLibrarySelect;
+    if (!select) return;
+
+    try {
+        const savedPrompts = JSON.parse(localStorage.getItem('saved_prompts') || '[]');
+
+        // Clear all options except the first placeholder
+        select.innerHTML = '<option value="">-- Prompts guardados --</option>';
+
+        savedPrompts.forEach((prompt) => {
+            const option = document.createElement('option');
+            option.value = prompt;
+            // Truncate for display
+            option.textContent = prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt;
+            select.appendChild(option);
+        });
+    } catch (e) {
+        console.error('Error rendering prompt library:', e);
+    }
 };
 
 App.checkTheme = function () {

@@ -5,6 +5,7 @@ window.App = {
     lastBuffer: null,
     lastSourceType: 'file', // 'file' or 'mic'
     isRecording: false,
+    isOffline: false,
 
     // Data
     notesData: [],       // The main melody (whistled or loaded)
@@ -21,6 +22,8 @@ window.App = {
 
     // Playback
     currentSynth: null,
+    isPlaying: false,
+    scheduledEvents: [], // For canceling scheduled notes
 
     // AI Metadata
     currentTitle: "Sin título",
